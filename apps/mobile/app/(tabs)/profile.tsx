@@ -3,12 +3,10 @@ import { useCallback, useState } from 'react'
 import { Alert, Linking } from 'react-native'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import type { ProviderId } from '@nutai/prompt'
 import { availability, requestPermissions } from '../../src/health/healthkit'
 import { exportAndShareBackup, finishRestore, importBackup, pickBackupFile } from '../../src/data/backup'
 import { currentGoal, resetEverything, setting, type CurrentGoal } from '../../src/data/repo'
-import { loadCredential, maskCredential } from '../../src/inference/credentials'
-import { PROVIDER_NAME } from '../../src/components/CredentialForm'
+import { checkGatewayHealth } from '../../src/inference/gateway-config'
 import { Icon } from '../../src/components/Icon'
 import { useTheme } from '../../src/theme/ThemeProvider'
 import { radius, space, type } from '../../src/theme/tokens'
@@ -52,16 +50,12 @@ export default function Profile() {
         setGoal(g)
         setDiet(d)
         setHealthAvail(avail === 'available' ? 'available' : avail === 'not-ios' ? 'not-ios' : 'unavailable')
-        if (!p || p === 'none') {
-          setProviderLabel('Not connected')
+        if (p === 'none') {
+          setProviderLabel('Offline / Manual only')
         } else {
-          const cred = await loadCredential(p as ProviderId)
+          const h = await checkGatewayHealth()
           if (!alive) return
-          setProviderLabel(
-            cred
-              ? `${PROVIDER_NAME[p as ProviderId]} · ${maskCredential(cred.value)}`
-              : `${PROVIDER_NAME[p as ProviderId]} · key missing`,
-          )
+          setProviderLabel(h.ok ? 'Private Gateway · Online' : 'Private Gateway · Connecting…')
         }
       })()
       return () => {
@@ -183,8 +177,8 @@ export default function Profile() {
         />
       </Section>
 
-      <Section title="AI provider">
-        <Row label="Provider & key" value={providerLabel} onPress={() => router.push('/provider-settings' as never)} />
+      <Section title="AI Perception">
+        <Row label="Private AI Gateway" value={providerLabel} onPress={() => router.push('/provider-settings' as never)} />
       </Section>
 
       <Section title="Apple Health">

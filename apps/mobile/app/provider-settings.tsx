@@ -1,167 +1,281 @@
 import { router, useFocusEffect } from 'expo-router'
 import { useCallback, useState } from 'react'
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { PROVIDER_MODELS, providersByPrice, type ProviderId } from '@nutai/prompt'
-import { CredentialForm, PROVIDER_NAME } from '../src/components/CredentialForm'
 import { Icon } from '../src/components/Icon'
-import { putSetting, setting } from '../src/data/repo'
-import { clearCredential, loadCredential, maskCredential } from '../src/inference/credentials'
+import {
+  checkGatewayHealth,
+  fetchAdminStatus,
+  getAdminToken,
+  getAppToken,
+  getGatewayUrl,
+  setAdminToken,
+  setAppToken,
+  setGatewayUrl,
+  type GatewayHealthStatus,
+} from '../src/inference/gateway-config'
 import { useTheme } from '../src/theme/ThemeProvider'
-import { MIN_TAP_TARGET, radius, space, type } from '../src/theme/tokens'
+import { radius, space, type } from '../src/theme/tokens'
 
-/**
- * Provider settings — everything the onboarding key screen can do, available
- * forever. Change provider, change model, re-verify a key, clear it. Nothing
- * decided during onboarding is a life sentence.
- */
 export default function ProviderSettings() {
   const theme = useTheme()
   const insets = useSafeAreaInsets()
-  const [provider, setProvider] = useState<ProviderId>('anthropic')
-  const [modelId, setModelId] = useState<string>('')
-  const [masked, setMasked] = useState<string | null>(null)
-  const [showForm, setShowForm] = useState(false)
+
+  const [url, setUrl] = useState('')
+  const [token, setToken] = useState('')
+  const [adminKey, setAdminKey] = useState('')
+  const [health, setHealth] = useState<GatewayHealthStatus | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [adminTelemetry, setAdminTelemetry] = useState<any[] | null>(null)
+  const [showConfig, setShowConfig] = useState(false)
 
   const refresh = useCallback(() => {
     void (async () => {
-      const p = (await setting('provider')) as ProviderId | 'none' | ''
-      const active = p && p !== 'none' ? p : 'anthropic'
-      setProvider(active)
-      setModelId(await setting('provider_model'))
-      const cred = await loadCredential(active)
-      setMasked(cred ? maskCredential(cred.value) : null)
-      setShowForm(!cred)
+      setBusy(true)
+      const [currUrl, currToken, currAdmin] = await Promise.all([
+        getGatewayUrl(),
+        getAppToken(),
+        getAdminToken(),
+      ])
+      setUrl(currUrl)
+      setToken(currToken)
+      setAdminKey(currAdmin ?? '')
+
+      const h = await checkGatewayHealth(currUrl)
+      setHealth(h)
+
+      if (currAdmin) {
+        const adminRes = await fetchAdminStatus(currUrl, currAdmin)
+        if (adminRes.ok && adminRes.data?.telemetry) {
+          setAdminTelemetry(adminRes.data.telemetry)
+        }
+      }
+      setBusy(false)
     })()
   }, [])
+
   useFocusEffect(refresh)
+
+  async function testAndSave() {
+    setBusy(true)
+    await setGatewayUrl(url.trim())
+    await setAppToken(token.trim())
+    const h = await checkGatewayHealth(url.trim())
+    setHealth(h)
+    setBusy(false)
+    if (h.ok) {
+      Alert.alert('Connected', `Gateway is online (${h.activeResources} active provider resources).`)
+    } else {
+      Alert.alert('Connection Failed', h.error ?? 'Could not connect to gateway.')
+    }
+  }
+
+  async function unlockAdmin() {
+    if (!adminKey.trim()) return
+    setBusy(true)
+    await setAdminToken(adminKey.trim())
+    const res = await fetchAdminStatus(url.trim(), adminKey.trim())
+    setBusy(false)
+    if (res.ok && res.data?.telemetry) {
+      setAdminTelemetry(res.data.telemetry)
+      Alert.alert('Admin Unlocked', `Loaded telemetry for ${res.data.telemetry.length} pool resources.`)
+    } else {
+      Alert.alert('Admin Access Denied', res.error ?? 'Invalid admin token.')
+    }
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <View style={[styles.head, { paddingTop: insets.top + space.sm }]}>
-        <Text style={[type.title, { color: theme.text }]}>AI provider</Text>
+        <Text style={[type.title, { color: theme.text }]}>AI Gateway & Pool</Text>
         <Pressable onPress={() => router.back()} hitSlop={space.md}>
           <Icon name="close" size={22} color={theme.textMuted} />
         </Pressable>
       </View>
 
       <ScrollView contentContainerStyle={{ padding: space.lg, paddingBottom: 120 }}>
-        <View style={styles.chipRow}>
-          {providersByPrice().map((p) => (
-            <Pressable
-              key={p}
-              onPress={() => {
-                setProvider(p)
-                setShowForm(true)
-                void (async () => {
-                  const cred = await loadCredential(p)
-                  setMasked(cred ? maskCredential(cred.value) : null)
-                  setShowForm(!cred)
-                  if (cred) {
-                    await putSetting('provider', p)
-                    const m = PROVIDER_MODELS[p][0]!.id
-                    setModelId(m)
-                    await putSetting('provider_model', m)
-                  }
-                })()
-              }}
-              style={[
-                styles.chip,
-                provider === p
-                  ? { backgroundColor: theme.text }
-                  : { borderWidth: 1.5, borderColor: theme.border },
-              ]}
-            >
-              <Text style={[type.label, { color: provider === p ? theme.bg : theme.text }]}>
-                {PROVIDER_NAME[p]}
+        {/* Status Card */}
+        <View style={[styles.card, { backgroundColor: theme.bgSunken }]}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
+              <View
+                style={[
+                  styles.dot,
+                  {
+                    backgroundColor:
+                      health?.status === 'online'
+                        ? theme.affirm
+                        : health?.status === 'degraded'
+                          ? theme.uncertain
+                          : theme.safety,
+                  },
+                ]}
+              />
+              <Text style={[type.bodyStrong, { color: theme.text }]}>
+                {health?.status === 'online'
+                  ? 'Private AI Gateway · Online'
+                  : health?.status === 'degraded'
+                    ? 'AI Gateway · Degraded'
+                    : 'AI Gateway · Offline'}
               </Text>
-            </Pressable>
-          ))}
+            </View>
+            {health?.latencyMs !== undefined ? (
+              <Text style={[type.caption, { color: theme.textMuted }]}>{health.latencyMs}ms</Text>
+            ) : null}
+          </View>
+
+          <Text style={[type.caption, { color: theme.textMuted, marginTop: space.sm, lineHeight: 18 }]}>
+            {health?.status === 'online'
+              ? `Connected to private gateway with ${health.activeResources ?? 0} active provider pool resources. Food perception is managed outside the mobile device.`
+              : health?.error ?? 'Checking connection…'}
+          </Text>
+
+          <Pressable
+            onPress={refresh}
+            disabled={busy}
+            style={[styles.btn, { backgroundColor: theme.bgElevated, marginTop: space.md }]}
+          >
+            {busy ? (
+              <ActivityIndicator size="small" color={theme.text} />
+            ) : (
+              <Text style={[type.label, { color: theme.text }]}>Check status</Text>
+            )}
+          </Pressable>
         </View>
 
-        {masked ? (
-          <View style={[styles.card, { backgroundColor: theme.bgSunken }]}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
-              <Icon name="check" size={16} color={theme.affirm} weight={2.4} />
-              <Text style={[type.bodyStrong, { color: theme.text }]}>Key saved</Text>
-              <Text style={[type.body, { color: theme.textMuted }]}>{masked}</Text>
-            </View>
-            <View style={{ flexDirection: 'row', gap: space.lg, marginTop: space.md }}>
-              <Pressable onPress={() => setShowForm(true)} hitSlop={space.sm}>
-                <Text style={[type.label, { color: theme.protein }]}>Replace key</Text>
-              </Pressable>
-              <Pressable
-                onPress={() =>
-                  Alert.alert(
-                    'Remove this key?',
-                    `Photo scans stop working until you add a ${PROVIDER_NAME[provider]} key again. Your logged data is not touched.`,
-                    [
-                      { text: 'Cancel', style: 'cancel' },
-                      {
-                        text: 'Remove',
-                        style: 'destructive',
-                        onPress: () => {
-                          void (async () => {
-                            await clearCredential(provider)
-                            await putSetting('provider', 'none')
-                            refresh()
-                          })()
+        {/* Administrator Telemetry View (when unlocked) */}
+        {adminTelemetry ? (
+          <View style={{ marginTop: space.xl }}>
+            <Text style={[type.label, { color: theme.textMuted, marginBottom: space.sm }]}>
+              Admin: Provider Resource Pool Telemetry
+            </Text>
+            <View style={{ gap: space.sm }}>
+              {adminTelemetry.map((r: any) => (
+                <View key={r.id} style={[styles.resourceCard, { backgroundColor: theme.bgSunken }]}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text style={[type.bodyStrong, { color: theme.text }]}>{r.id}</Text>
+                    <View
+                      style={[
+                        styles.badge,
+                        {
+                          backgroundColor:
+                            r.healthState === 'healthy'
+                              ? theme.uncertainBg
+                              : r.healthState === 'cooldown'
+                                ? theme.uncertainBg
+                                : theme.safetyBg,
                         },
-                      },
-                    ],
-                  )
-                }
-                hitSlop={space.sm}
-              >
-                <Text style={[type.label, { color: theme.safety }]}>Remove key</Text>
-              </Pressable>
-            </View>
-          </View>
-        ) : null}
-
-        {showForm ? (
-          <View style={{ marginTop: space.lg }}>
-            <CredentialForm
-              provider={provider}
-              onSaved={(m) => {
-                setModelId(m)
-                refresh()
-              }}
-            />
-          </View>
-        ) : null}
-
-        {masked ? (
-          <>
-            <Text style={[type.label, { color: theme.textMuted, marginTop: space.xl }]}>Model</Text>
-            <View style={{ marginTop: space.sm, gap: space.sm }}>
-              {PROVIDER_MODELS[provider].map((m) => {
-                const active = m.id === modelId
-                return (
-                  <Pressable
-                    key={m.id}
-                    onPress={() => {
-                      setModelId(m.id)
-                      void putSetting('provider_model', m.id)
-                    }}
-                    style={[styles.modelRow, { borderColor: active ? theme.text : theme.border, borderWidth: active ? 2 : StyleSheet.hairlineWidth }]}
-                  >
-                    <View style={{ flex: 1 }}>
-                      <Text style={[type.bodyStrong, { color: theme.text }]}>{m.label}</Text>
-                      <Text style={[type.caption, { color: theme.textMuted, marginTop: 2 }]}>
-                        ~${m.approxScanCostUsd.toFixed(4)} per scan
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          type.micro,
+                          {
+                            color:
+                              r.healthState === 'healthy'
+                                ? theme.affirm
+                                : r.healthState === 'cooldown'
+                                  ? theme.uncertain
+                                  : theme.safety,
+                            textTransform: 'uppercase',
+                          },
+                        ]}
+                      >
+                        {r.healthState}
                       </Text>
                     </View>
-                    {active ? <Icon name="check" size={18} color={theme.text} weight={2.4} /> : null}
-                  </Pressable>
-                )
-              })}
+                  </View>
+                  <Text style={[type.caption, { color: theme.textMuted, marginTop: 4 }]}>
+                    Provider: {r.provider} · Priority: {r.priority} · Total Requests: {r.totalRequests}
+                  </Text>
+                  <Text style={[type.caption, { color: theme.textMuted, marginTop: 2 }]}>
+                    Successes: {r.totalSuccesses} · Failures: {r.totalFailures} · Failovers: {r.totalFailovers}
+                  </Text>
+                  {r.lastErrorReason ? (
+                    <Text style={[type.caption, { color: theme.safety, marginTop: 4, fontSize: 11 }]}>
+                      Last error: {r.lastErrorReason}
+                    </Text>
+                  ) : null}
+                </View>
+              ))}
             </View>
-            <Text style={[type.caption, { color: theme.textFaint, marginTop: space.md, lineHeight: 18 }]}>
-              The cheapest vision model is the honest default: frontier models are not measurably
-              better at portion size, which is where nearly all the error lives.
-            </Text>
-          </>
+          </View>
+        ) : null}
+
+        {/* Gateway Connection Settings Toggle */}
+        <Pressable
+          onPress={() => setShowConfig(!showConfig)}
+          style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: space.xl }}
+        >
+          <Text style={[type.label, { color: theme.protein }]}>
+            {showConfig ? 'Hide connection settings' : 'Configure gateway connection'}
+          </Text>
+          <Icon name={showConfig ? 'close' : 'chevron'} size={14} color={theme.protein} />
+        </Pressable>
+
+        {showConfig ? (
+          <View style={[styles.card, { backgroundColor: theme.bgSunken, marginTop: space.md }]}>
+            <Text style={[type.caption, { color: theme.textMuted }]}>Gateway URL</Text>
+            <TextInput
+              value={url}
+              onChangeText={setUrl}
+              placeholder="http://localhost:3000"
+              placeholderTextColor={theme.textFaint}
+              autoCapitalize="none"
+              autoCorrect={false}
+              style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bgElevated }]}
+            />
+
+            <Text style={[type.caption, { color: theme.textMuted, marginTop: space.md }]}>Application Access Token</Text>
+            <TextInput
+              value={token}
+              onChangeText={setToken}
+              placeholder="nutai-app-default-token"
+              placeholderTextColor={theme.textFaint}
+              autoCapitalize="none"
+              autoCorrect={false}
+              secureTextEntry
+              style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bgElevated }]}
+            />
+
+            <Pressable
+              onPress={testAndSave}
+              disabled={busy}
+              style={[styles.primaryBtn, { backgroundColor: theme.text, marginTop: space.lg }]}
+            >
+              <Text style={[type.bodyStrong, { color: theme.bg }]}>Save & Test Connection</Text>
+            </Pressable>
+
+            {/* Admin Key input */}
+            <View style={{ marginTop: space.xl, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.border, paddingTop: space.lg }}>
+              <Text style={[type.caption, { color: theme.textMuted }]}>Admin Key (for telemetry and pool inspection)</Text>
+              <TextInput
+                value={adminKey}
+                onChangeText={setAdminKey}
+                placeholder="Admin Secret"
+                placeholderTextColor={theme.textFaint}
+                autoCapitalize="none"
+                autoCorrect={false}
+                secureTextEntry
+                style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bgElevated }]}
+              />
+              <Pressable
+                onPress={unlockAdmin}
+                style={[styles.btn, { backgroundColor: theme.bgElevated, marginTop: space.md }]}
+              >
+                <Text style={[type.label, { color: theme.text }]}>Inspect Pool Telemetry</Text>
+              </Pressable>
+            </View>
+          </View>
         ) : null}
       </ScrollView>
     </View>
@@ -176,20 +290,29 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.lg,
     paddingBottom: space.sm,
   },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
-  chip: {
-    paddingHorizontal: space.lg,
+  card: { padding: space.lg, borderRadius: radius.lg },
+  resourceCard: { padding: space.md, borderRadius: radius.md },
+  dot: { width: 10, height: 10, borderRadius: 5 },
+  badge: { paddingHorizontal: space.sm, paddingVertical: 2, borderRadius: radius.pill },
+  input: {
+    marginTop: 6,
+    paddingHorizontal: space.md,
     paddingVertical: space.sm,
-    borderRadius: radius.pill,
-    minHeight: MIN_TAP_TARGET,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    fontSize: 15,
+  },
+  btn: {
+    paddingVertical: space.sm,
+    paddingHorizontal: space.md,
+    borderRadius: radius.md,
+    alignItems: 'center',
     justifyContent: 'center',
   },
-  card: { marginTop: space.lg, padding: space.lg, borderRadius: radius.lg },
-  modelRow: {
-    flexDirection: 'row',
+  primaryBtn: {
+    paddingVertical: space.md,
+    borderRadius: radius.pill,
     alignItems: 'center',
-    gap: space.md,
-    padding: space.lg,
-    borderRadius: radius.lg,
+    justifyContent: 'center',
   },
 })

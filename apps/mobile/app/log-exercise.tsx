@@ -11,16 +11,14 @@ import {
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { ExerciseEstimateZ } from '@nutai/core-schema'
-import { cheapestModel, type ProviderId } from '@nutai/prompt'
 import { Icon, type IconName } from '../src/components/Icon'
-import { db, localDate, setting, weightHistory } from '../src/data/repo'
+import { db, localDate, weightHistory } from '../src/data/repo'
 import {
   exerciseKcal,
   INTENSITY_ANCHORS,
   type ExerciseKind,
   type Intensity,
 } from '../src/exercise/met'
-import { loadCredential } from '../src/inference/credentials'
 import { runExerciseEstimate } from '../src/inference/pathA/client'
 import { useTheme } from '../src/theme/ThemeProvider'
 import { MIN_TAP_TARGET, radius, space, type } from '../src/theme/tokens'
@@ -274,17 +272,8 @@ function DescribeScreen({ onBack }: { onBack: () => void }) {
     setBusy(true)
     setError(null)
 
-    const provider = (await setting('provider')) as ProviderId | 'none' | ''
-    const credential = provider && provider !== 'none' ? await loadCredential(provider) : null
-    if (!credential || !provider || provider === 'none') {
-      setBusy(false)
-      setError('Describing a workout needs an API key — add one in Profile, or use Run, Weight lifting or Manual instead.')
-      return
-    }
-
-    const model = (await setting('provider_model')) || cheapestModel(provider).id
     const kg = await latestWeightKg()
-    const outcome = await runExerciseEstimate(provider, { model, description: desc, weightKg: kg }, credential)
+    const outcome = await runExerciseEstimate('google', { description: desc, weightKg: kg })
     const parsed = outcome.ok ? ExerciseEstimateZ.safeParse(outcome.raw) : null
 
     if (!parsed?.success) {

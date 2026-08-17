@@ -48,12 +48,12 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModel[]> = {
     { id: 'gpt-4o', label: 'GPT-4o', inputPerMTok: 2.5, outputPerMTok: 10, approxScanCostUsd: 0.012 },
   ],
   google: [
-    { id: 'gemini-2.0-flash-lite', label: 'Gemini Flash-Lite', inputPerMTok: 0.075, outputPerMTok: 0.3, approxScanCostUsd: 0.0024 },
-    { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', inputPerMTok: 1.25, outputPerMTok: 10, approxScanCostUsd: 0.02 },
+    { id: 'gemini-flash-lite-latest', label: 'Gemini Flash-Lite', inputPerMTok: 0.075, outputPerMTok: 0.3, approxScanCostUsd: 0.0024 },
+    { id: 'gemini-flash-latest', label: 'Gemini Flash', inputPerMTok: 0.15, outputPerMTok: 0.6, approxScanCostUsd: 0.005 },
   ],
   anthropic: [
-    { id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5', inputPerMTok: 1, outputPerMTok: 5, approxScanCostUsd: 0.005 },
-    { id: 'claude-sonnet-5', label: 'Claude Sonnet 5', inputPerMTok: 3, outputPerMTok: 15, approxScanCostUsd: 0.018 },
+    { id: 'claude-3-5-haiku-20241022', label: 'Claude 3.5 Haiku', inputPerMTok: 1, outputPerMTok: 5, approxScanCostUsd: 0.005 },
+    { id: 'claude-3-7-sonnet-20250219', label: 'Claude 3.7 Sonnet', inputPerMTok: 3, outputPerMTok: 15, approxScanCostUsd: 0.018 },
   ],
 }
 
@@ -192,7 +192,7 @@ export function buildOpenAIRequest(input: BuildRequestInput, apiKey: string): Pr
 
 export function buildGeminiRequest(input: BuildRequestInput, apiKey: string): ProviderRequest {
   const parts: unknown[] = input.imagesBase64.map((data) => ({
-    inline_data: { mime_type: 'image/jpeg', data },
+    inlineData: { mimeType: 'image/jpeg', data },
   }))
   const text = input.localSignalsBlock
     ? `${input.localSignalsBlock}\n\n${USER_INSTRUCTION}`

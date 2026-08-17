@@ -3,26 +3,18 @@ import { SEEDED_BASELINES, type Band } from '@nutai/confidence'
 import {
   LabelPayloadZ,
   ReceiptPayloadZ,
-  VISION_WIRE_SCHEMA,
   WebLookupResultZ,
   type IngredientRow,
   type LoggedMeal,
 } from '@nutai/core-schema'
 import type { PersonalPriors } from '@nutai/gram-engine'
 import {
-  anthropicWireSchema,
-  cheapestModel,
-  geminiWireSchema,
-  openAiWireSchema,
   LABEL_SCAN_PROMPT_VERSION,
   RECEIPT_SCAN_PROMPT_VERSION,
-  type ProviderId,
 } from '@nutai/prompt'
 import { recomputeAfterEdit, runPipeline, validatePayload, type ScanResult } from '@nutai/pipeline'
 import { openNutritionDb } from '../db/expo-adapter'
 import { loadFoodDb } from '../db/portions'
-import { setting } from '../data/repo'
-import { loadCredential, type StoredCredential } from '../inference/credentials'
 import { runLabelScan, runReceiptScan, runScanWithFallback, runWebLookup } from '../inference/pathA/client'
 import { applyWebOption, getPhase, setPhase, setWebLookup } from './store'
 
@@ -48,12 +40,6 @@ const EMPTY_PRIORS: PersonalPriors = { get: () => null, containers: new Map() }
 
 /** Kept for retry, so a network blip does not re-run image preprocessing. */
 let lastCapture: { photoUri: string; base64: string } | null = null
-
-function wireSchemaFor(provider: ProviderId): Record<string, unknown> {
-  if (provider === 'anthropic') return anthropicWireSchema(VISION_WIRE_SCHEMA)
-  if (provider === 'openai') return openAiWireSchema(VISION_WIRE_SCHEMA)
-  return geminiWireSchema(VISION_WIRE_SCHEMA)
-}
 
 async function preprocess(photoUri: string): Promise<string> {
   const ctx = ImageManipulator.ImageManipulator.manipulate(photoUri)
@@ -106,41 +92,12 @@ interface AnalyzeOpts {
 }
 
 async function analyze(photoUri: string, base64: string, opts: AnalyzeOpts = {}): Promise<void> {
-  const provider = (await setting('provider')) as ProviderId | 'none' | ''
-  if (!provider || provider === 'none') {
-    setPhase({
-      kind: 'failed',
-      photoUri,
-      message:
-        'Photo scans need an API key. Add one in Profile — barcode, search and manual logging work without one.',
-      canRetry: false,
-      failureKind: 'no-key',
-    })
-    return
-  }
-
-  const credential = await loadCredential(provider)
-  if (!credential) {
-    setPhase({
-      kind: 'failed',
-      photoUri,
-      message: 'Your saved key is missing. Re-enter it in Profile.',
-      canRetry: false,
-      failureKind: 'key-invalid',
-    })
-    return
-  }
-
-  const model = (await setting('provider_model')) || cheapestModel(provider).id
-
   setPhase({ kind: 'analyzing', photoUri, stage: 'identifying' })
   const outcome = await runScanWithFallback({
-    provider,
-    model,
-    credential,
     imagesBase64: [base64],
     localSignalsBlock: opts.fixBlock ?? '',
-    jsonSchema: wireSchemaFor(provider),
+    fixBlock: opts.fixBlock,
+    keepFraction: opts.keepFraction,
   })
 
   if (!outcome.ok) {
@@ -208,8 +165,8 @@ async function analyze(photoUri: string, base64: string, opts: AnalyzeOpts = {})
     result,
     bands: result.items.map((i) => i.band),
     meta: {
-      provider,
-      model,
+      provider: outcome.value.provider ?? 'google',
+      model: outcome.value.model ?? 'gateway-managed',
       inputTokens: outcome.value.inputTokens + (opts.priorMeta?.inputTokens ?? 0),
       outputTokens: outcome.value.outputTokens + (opts.priorMeta?.outputTokens ?? 0),
       costUsd: outcome.value.costUsd + (opts.priorMeta?.costUsd ?? 0),
@@ -219,7 +176,7 @@ async function analyze(photoUri: string, base64: string, opts: AnalyzeOpts = {})
   })
 
   // Fire-and-forget: refinement upgrades rows underneath the review screen.
-  void refineMisses(result, outcome.value.raw, provider, model, credential)
+  void refineMisses(result, outcome.value.raw)
 }
 
 /** How many corpus misses we will pay to look up per scan. */
@@ -233,9 +190,6 @@ const MAX_LOOKUPS_PER_SCAN = 2
 async function refineMisses(
   result: ScanResult,
   rawPayload: unknown,
-  provider: ProviderId,
-  model: string,
-  credential: StoredCredential,
 ): Promise<void> {
   const payload = validatePayload(rawPayload)
   // Two triggers: the corpus missed entirely, or the model saw a BRAND (a logo
@@ -256,14 +210,12 @@ async function refineMisses(
 
       const source = payload?.items[index]
       const lookup = await runWebLookup(
-        provider,
+        'google',
         {
-          model,
           itemName: source?.name ?? item.row.displayName,
           brand: source?.brand ?? null,
           visualContext: source?.legible_label_text ?? null,
         },
-        credential,
       )
 
       if (!lookup.ok) {
@@ -441,24 +393,10 @@ export async function startBarcodeScan(gtin: string): Promise<void> {
     return
   }
 
-  // Not in the corpus. One web search, if we have the means.
-  const provider = (await setting('provider')) as ProviderId | 'none' | ''
-  const credential = provider && provider !== 'none' ? await loadCredential(provider) : null
-  if (!credential || !provider || provider === 'none') {
-    setPhase({
-      kind: 'failed',
-      photoUri: '',
-      message: 'This barcode is not in the bundled database. The Food label mode reads the printed panel directly and works without a key.',
-      canRetry: false,
-    })
-    return
-  }
-
-  const model = (await setting('provider_model')) || cheapestModel(provider).id
+  // Not in the corpus. One web search via AI Gateway.
   const lookup = await runWebLookup(
-    provider,
-    { model, itemName: `the packaged food product with barcode (GTIN/UPC/EAN) ${gtin}`, brand: null },
-    credential,
+    'google',
+    { itemName: `the packaged food product with barcode (GTIN/UPC/EAN) ${gtin}`, brand: null },
   )
   const parsed = lookup.ok ? WebLookupResultZ.safeParse(lookup.raw) : null
   const opt = parsed?.success && parsed.data.found ? parsed.data.options[0] : undefined
@@ -506,9 +444,7 @@ export async function startBarcodeScan(gtin: string): Promise<void> {
 
 /**
  * Label scanner: photograph the printed panel, transcribe it, log it as a
- * packaged_exact row. A label with no printed gram weight fails LOUDLY — a
- * guessed serving weight under a 'packaged_exact' pathway would be a lie in
- * the one place the app promises exactness.
+ * packaged_exact row.
  */
 export async function startLabelScan(photoUri: string): Promise<void> {
   setPhase({ kind: 'analyzing', photoUri, stage: 'preparing' })
@@ -522,23 +458,9 @@ export async function startLabelScan(photoUri: string): Promise<void> {
   }
   lastCapture = { photoUri, base64 }
 
-  const provider = (await setting('provider')) as ProviderId | 'none' | ''
-  const credential = provider && provider !== 'none' ? await loadCredential(provider) : null
-  if (!credential || !provider || provider === 'none') {
-    setPhase({
-      kind: 'failed',
-      photoUri,
-      message: 'Reading a label needs an API key. Add one in Profile — or find the product by barcode or search instead.',
-      canRetry: false,
-      failureKind: 'no-key',
-    })
-    return
-  }
-
-  const model = (await setting('provider_model')) || cheapestModel(provider).id
   setPhase({ kind: 'analyzing', photoUri, stage: 'identifying' })
 
-  const outcome = await runLabelScan(provider, { model, imageBase64: base64 }, credential)
+  const outcome = await runLabelScan('google', { imageBase64: base64 })
   if (!outcome.ok) {
     setPhase({
       kind: 'failed',
@@ -605,11 +527,6 @@ export async function startLabelScan(photoUri: string): Promise<void> {
 
 /**
  * Receipt mode — the meal you didn't photograph.
- *
- * The model transcribes merchant + line items off the paper; every NUMBER then
- * comes from one web lookup per item with the merchant as the brand. Items the
- * lookup cannot resolve are dropped and named in the failure copy rather than
- * logged as zeros — a silent zero-calorie Big Mac is worse than an honest gap.
  */
 const MAX_RECEIPT_ITEMS = 8
 
@@ -625,22 +542,8 @@ export async function startReceiptScan(photoUri: string): Promise<void> {
   }
   lastCapture = { photoUri, base64 }
 
-  const provider = (await setting('provider')) as ProviderId | 'none' | ''
-  const credential = provider && provider !== 'none' ? await loadCredential(provider) : null
-  if (!credential || !provider || provider === 'none') {
-    setPhase({
-      kind: 'failed',
-      photoUri,
-      message: 'Reading a receipt needs an API key. Add one in Profile.',
-      canRetry: false,
-      failureKind: 'no-key',
-    })
-    return
-  }
-  const model = (await setting('provider_model')) || cheapestModel(provider).id
-
   setPhase({ kind: 'analyzing', photoUri, stage: 'identifying' })
-  const outcome = await runReceiptScan(provider, { model, imageBase64: base64 }, credential)
+  const outcome = await runReceiptScan('google', { imageBase64: base64 })
   if (!outcome.ok) {
     setPhase({
       kind: 'failed',
@@ -671,9 +574,8 @@ export async function startReceiptScan(photoUri: string): Promise<void> {
     items.map(async (item) => ({
       item,
       lookup: await runWebLookup(
-        provider,
-        { model, itemName: item.name, brand: merchant },
-        credential,
+        'google',
+        { itemName: item.name, brand: merchant },
       ),
     })),
   )
@@ -738,14 +640,8 @@ export async function startReceiptScan(photoUri: string): Promise<void> {
  * what the user typed.
  */
 export async function lookupOther(rowId: string, typed: string): Promise<void> {
-  const provider = (await setting('provider')) as ProviderId | 'none' | ''
-  if (!provider || provider === 'none') return
-  const credential = await loadCredential(provider)
-  if (!credential) return
-  const model = (await setting('provider_model')) || cheapestModel(provider).id
-
   setWebLookup(rowId, { status: 'running' })
-  const lookup = await runWebLookup(provider, { model, itemName: typed, brand: null }, credential)
+  const lookup = await runWebLookup('google', { itemName: typed, brand: null })
   if (!lookup.ok) {
     setWebLookup(rowId, { status: 'failed' })
     return

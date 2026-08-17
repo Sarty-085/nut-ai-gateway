@@ -69,8 +69,8 @@ export interface OnboardingAnswers {
   accomplish: Accomplish | null
   rolloverCalories: boolean | null
   healthConnected: boolean
-  /** 'none' means no cloud key — barcode, label OCR, search and manual still work. */
-  provider: ProviderId | 'none' | undefined
+  /** 'none' means offline only — barcode, label OCR, search and manual still work. */
+  provider: ProviderId | 'cloud' | 'none' | undefined
   providerModel: string | null
 }
 

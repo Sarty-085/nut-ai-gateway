@@ -1,37 +1,17 @@
-import {
-  buildAnthropicRequest,
-  buildGeminiRequest,
-  buildExerciseEstimateInstruction,
-  buildLabelScanRequest,
-  buildOpenAIRequest,
-  buildReceiptScanRequest,
-  buildTextJsonRequest,
-  buildWebLookupRequest,
-  computeScanCost,
-  EXERCISE_ESTIMATE_PROMPT_VERSION,
-  type ProviderId,
-} from '@nutai/prompt'
+import type { ProviderId } from '@nutai/prompt'
+import { getAppToken, getGatewayUrl } from '../gateway-config'
 
 /**
- * Path A — the cloud inference client.
+ * Mobile AI Perception Client (Private AI Gateway Architecture).
  *
- * SPEC-accuracy-engine.md §3, PLAN.md D10. A thin wrapper over React Native's
- * `fetch`, deliberately NOT the vendor Node SDKs: those assume Node runtime
- * features Hermes does not guarantee. Non-streaming, one request in, one JSON
- * object out — which removes the single largest RN fetch/ReadableStream risk from
- * the core feature.
+ * SPEC-accuracy-engine.md §3, PLAN.md D10.
  *
- * This is the ONLY place in the app that reads an API key, and the key travels to
- * exactly one destination: the provider the user named.
+ * THE APP NEVER CONTAINS VENDOR SECRETS.
+ * All requests travel via HTTPS to the Private AI Gateway.
+ * The AI is strictly a PERCEPTION layer.
+ * All numbers and calculations remain in the deterministic engine.
  */
 
-/**
- * Six distinct states, never a generic toast.
- *
- * Every one of these gets its own copy and its own retry policy, because "an
- * error occurred" tells a user nothing about whether to wait, pay, re-enter a
- * key, or switch paths.
- */
 export type ScanFailureKind =
   | 'key-invalid'
   | 'quota-exhausted'
@@ -40,12 +20,8 @@ export type ScanFailureKind =
   | 'offline'
   | 'content-refusal'
   | 'schema-violation'
-  /**
-   * A request that may or may not have been billed. NEVER auto-retried: no
-   * provider offers an idempotency key for this endpoint, so a naive retry
-   * double-bills the user for one photo.
-   */
   | 'timeout-ambiguous'
+  | 'no-key'
 
 export interface ScanFailure {
   kind: ScanFailureKind
@@ -61,9 +37,18 @@ export interface ScanSuccess {
   costUsd: number
   latencyMs: number
   promptVersion: string
+  provider?: ProviderId
+  model?: string
+  resourceId?: string
 }
 
 export type ScanOutcome = { ok: true; value: ScanSuccess } | { ok: false; error: ScanFailure }
+
+export interface WebLookupOutcome {
+  ok: boolean
+  raw?: unknown
+  error?: ScanFailure
+}
 
 export interface Credential {
   kind: 'api_key' | 'oauth'
@@ -71,346 +56,292 @@ export interface Credential {
 }
 
 export interface ScanRequest {
-  provider: ProviderId
-  model: string
-  credential: Credential
   imagesBase64: readonly string[]
-  localSignalsBlock: string
-  jsonSchema: unknown
+  localSignalsBlock?: string
+  jsonSchema?: unknown
   timeoutMs?: number
+  provider?: ProviderId
+  model?: string
+  credential?: Credential
+  fixBlock?: string
+  keepFraction?: number
 }
 
-const DEFAULT_TIMEOUT_MS = 45_000
+function mapGatewayError(errorObj?: { code?: string; message?: string; retryable?: boolean; httpStatus?: number }): ScanFailure {
+  const code = errorObj?.code ?? ''
+  const message = errorObj?.message ?? 'Gateway request failed'
+  const retryable = errorObj?.retryable ?? false
+  const httpStatus = errorObj?.httpStatus
 
-function classify(status: number, body: string): ScanFailure {
-  if (status === 401 || status === 403) {
-    return { kind: 'key-invalid', message: 'That key was rejected by the provider.', retryable: false, httpStatus: status }
+  if (code === 'AUTH_FAILED' || code === 'FORBIDDEN') {
+    return { kind: 'key-invalid', message, retryable: false, httpStatus }
   }
-  if (status === 402) {
-    return { kind: 'quota-exhausted', message: 'Your provider account is out of credit.', retryable: false, httpStatus: status }
+  if (code === 'QUOTA_EXHAUSTED') {
+    return { kind: 'quota-exhausted', message, retryable: false, httpStatus }
   }
-  if (status === 404) {
-    return { kind: 'model-unavailable', message: 'That model is not available on your account.', retryable: false, httpStatus: status }
+  if (code === 'MODEL_UNAVAILABLE') {
+    return { kind: 'model-unavailable', message, retryable: false, httpStatus }
   }
-  if (status === 429) {
-    return { kind: 'error-retryable', message: 'The provider is rate-limiting. Try again shortly.', retryable: true, httpStatus: status }
+  if (code === 'RATE_LIMITED') {
+    return { kind: 'error-retryable', message, retryable: true, httpStatus }
   }
-  if (status >= 500) {
-    return { kind: 'error-retryable', message: 'The provider had a server error.', retryable: true, httpStatus: status }
+  if (code === 'TIMEOUT') {
+    return { kind: 'timeout-ambiguous', message, retryable: false, httpStatus }
   }
-  if (/refus|safety|policy/i.test(body)) {
-    return { kind: 'content-refusal', message: 'The provider declined to analyze this image.', retryable: false, httpStatus: status }
+  if (code === 'CONTENT_REFUSAL') {
+    return { kind: 'content-refusal', message, retryable: false, httpStatus }
   }
-  return { kind: 'error-retryable', message: `Unexpected response (${status}).`, retryable: true, httpStatus: status }
+  if (code === 'SCHEMA_VIOLATION') {
+    return { kind: 'schema-violation', message, retryable: false, httpStatus }
+  }
+  return { kind: 'error-retryable', message, retryable, httpStatus }
 }
 
-/** Pull the JSON payload out of each provider's differently-shaped envelope. */
-function extractPayload(provider: ProviderId, json: unknown): { raw: unknown; inputTokens: number; outputTokens: number } | null {
-  const j = json as Record<string, any>
-  try {
-    if (provider === 'anthropic') {
-      const text = j.content?.[0]?.text
-      return {
-        raw: typeof text === 'string' ? JSON.parse(text) : text,
-        inputTokens: j.usage?.input_tokens ?? 0,
-        outputTokens: j.usage?.output_tokens ?? 0,
-      }
-    }
-    if (provider === 'openai') {
-      const text = j.choices?.[0]?.message?.content
-      return {
-        raw: typeof text === 'string' ? JSON.parse(text) : text,
-        inputTokens: j.usage?.prompt_tokens ?? 0,
-        outputTokens: j.usage?.completion_tokens ?? 0,
-      }
-    }
-    const text = j.candidates?.[0]?.content?.parts?.[0]?.text
-    return {
-      raw: typeof text === 'string' ? JSON.parse(text) : text,
-      inputTokens: j.usageMetadata?.promptTokenCount ?? 0,
-      outputTokens: j.usageMetadata?.candidatesTokenCount ?? 0,
-    }
-  } catch {
-    return null
-  }
-}
-
-export async function runScan(req: ScanRequest, fetchImpl: typeof fetch = fetch): Promise<ScanOutcome> {
-  const input = {
-    model: req.model,
-    imagesBase64: req.imagesBase64,
-    localSignalsBlock: req.localSignalsBlock,
-    jsonSchema: req.jsonSchema,
-  }
-
-  const built =
-    req.provider === 'anthropic'
-      ? buildAnthropicRequest(input, req.credential)
-      : req.provider === 'openai'
-        ? buildOpenAIRequest(input, req.credential.value)
-        : buildGeminiRequest(input, req.credential.value)
+async function postGateway<T = any>(
+  path: string,
+  payload: Record<string, unknown>,
+  fetchImpl: typeof fetch = fetch,
+  timeoutMs = 45_000,
+): Promise<{ ok: boolean; data?: T; meta?: any; error?: ScanFailure }> {
+  const baseUrl = (await getGatewayUrl()).replace(/\/+$/, '')
+  const token = await getAppToken()
 
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), req.timeoutMs ?? DEFAULT_TIMEOUT_MS)
-  const started = Date.now()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
 
   try {
-    const res = await fetchImpl(built.url, {
+    const res = await fetchImpl(`${baseUrl}${path}`, {
       method: 'POST',
-      headers: built.headers,
-      body: JSON.stringify(built.body),
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
       signal: controller.signal,
     })
 
     const text = await res.text()
-    if (!res.ok) return { ok: false, error: classify(res.status, text) }
-
-    let json: unknown
+    let json: Record<string, any>
     try {
       json = JSON.parse(text)
     } catch {
-      return { ok: false, error: { kind: 'schema-violation', message: 'The provider returned malformed JSON.', retryable: false } }
+      return {
+        ok: false,
+        error: {
+          kind: 'schema-violation',
+          message: 'Gateway returned non-JSON response',
+          retryable: false,
+          httpStatus: res.status,
+        },
+      }
     }
 
-    const extracted = extractPayload(req.provider, json)
-    if (!extracted || extracted.raw == null) {
-      return { ok: false, error: { kind: 'schema-violation', message: 'The provider returned an unexpected shape.', retryable: false } }
+    if (!res.ok || json['ok'] === false) {
+      return {
+        ok: false,
+        error: mapGatewayError(json['error']),
+      }
+    }
+
+    return {
+      ok: true,
+      data: json['data'] as T,
+      meta: json['meta'],
+    }
+  } catch (err: any) {
+    if (err.name === 'AbortError') {
+      return {
+        ok: false,
+        error: {
+          kind: 'timeout-ambiguous',
+          message: 'The request to the AI gateway timed out.',
+          retryable: false,
+        },
+      }
+    }
+    return {
+      ok: false,
+      error: {
+        kind: 'offline',
+        message: 'Could not connect to the private AI gateway. Check network connection.',
+        retryable: true,
+      },
+    }
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/**
+ * Unified AIService provider-neutral abstraction.
+ */
+export const AIService = {
+  async analyzeFood(
+    imagesBase64: string[],
+    localSignalsBlock = '',
+    opts?: { fixBlock?: string; keepFraction?: number; timeoutMs?: number },
+    fetchImpl: typeof fetch = fetch,
+  ): Promise<ScanOutcome> {
+    const res = await postGateway(
+      '/v1/analyze',
+      {
+        imagesBase64,
+        localSignalsBlock,
+        fixBlock: opts?.fixBlock,
+        keepFraction: opts?.keepFraction,
+      },
+      fetchImpl,
+      opts?.timeoutMs ?? 45_000,
+    )
+
+    if (!res.ok || !res.data) {
+      return { ok: false, error: res.error ?? { kind: 'error-retryable', message: 'Failed to analyze food', retryable: true } }
     }
 
     return {
       ok: true,
       value: {
-        raw: extracted.raw,
-        inputTokens: extracted.inputTokens,
-        outputTokens: extracted.outputTokens,
-        // Real token counts, never an estimate, so the ledger shows an actual
-        // dollar figure rather than a guess.
-        costUsd: computeScanCost(req.provider, req.model, extracted.inputTokens, extracted.outputTokens),
-        latencyMs: Date.now() - started,
-        promptVersion: built.promptVersion,
+        raw: res.data,
+        inputTokens: res.meta?.inputTokens ?? 0,
+        outputTokens: res.meta?.outputTokens ?? 0,
+        costUsd: res.meta?.costUsd ?? 0,
+        latencyMs: res.meta?.latencyMs ?? 0,
+        promptVersion: res.meta?.promptVersion ?? '1.0.0',
+        provider: res.meta?.provider,
+        model: res.meta?.model,
+        resourceId: res.meta?.resourceId,
       },
     }
-  } catch (err) {
-    const aborted = (err as Error)?.name === 'AbortError'
-    if (aborted) {
-      // The request MAY have been billed. Never auto-retry — no provider offers
-      // an idempotency key here, so a retry can double-charge for one photo. The
-      // user is told, and chooses.
-      return {
-        ok: false,
-        error: {
-          kind: 'timeout-ambiguous',
-          message: 'The request timed out. It may still have been charged, so we will not retry automatically.',
-          retryable: false,
-        },
-      }
+  },
+
+  async analyzeNutritionLabel(
+    imageBase64: string,
+    opts?: { timeoutMs?: number },
+    fetchImpl: typeof fetch = fetch,
+  ): Promise<WebLookupOutcome> {
+    const res = await postGateway(
+      '/v1/label-scan',
+      { imageBase64 },
+      fetchImpl,
+      opts?.timeoutMs ?? 30_000,
+    )
+    if (!res.ok || !res.data) {
+      return { ok: false, error: res.error }
     }
-    return { ok: false, error: { kind: 'offline', message: 'No connection to the provider.', retryable: true } }
-  } finally {
-    clearTimeout(timer)
-  }
+    return { ok: true, raw: res.data }
+  },
+
+  async analyzeReceipt(
+    imageBase64: string,
+    opts?: { timeoutMs?: number },
+    fetchImpl: typeof fetch = fetch,
+  ): Promise<WebLookupOutcome> {
+    const res = await postGateway(
+      '/v1/receipt-scan',
+      { imageBase64 },
+      fetchImpl,
+      opts?.timeoutMs ?? 30_000,
+    )
+    if (!res.ok || !res.data) {
+      return { ok: false, error: res.error }
+    }
+    return { ok: true, raw: res.data }
+  },
+
+  async lookupBrandedFood(
+    itemName: string,
+    brand?: string | null,
+    visualContext?: string | null,
+    opts?: { timeoutMs?: number },
+    fetchImpl: typeof fetch = fetch,
+  ): Promise<WebLookupOutcome> {
+    const res = await postGateway(
+      '/v1/web-lookup',
+      { itemName, brand, visualContext },
+      fetchImpl,
+      opts?.timeoutMs ?? 30_000,
+    )
+    if (!res.ok || !res.data) {
+      return { ok: false, error: res.error }
+    }
+    return { ok: true, raw: res.data }
+  },
+
+  async estimateExercise(
+    description: string,
+    weightKg?: number | null,
+    opts?: { timeoutMs?: number },
+    fetchImpl: typeof fetch = fetch,
+  ): Promise<WebLookupOutcome> {
+    const res = await postGateway(
+      '/v1/exercise-estimate',
+      { description, weightKg },
+      fetchImpl,
+      opts?.timeoutMs ?? 20_000,
+    )
+    if (!res.ok || !res.data) {
+      return { ok: false, error: res.error }
+    }
+    return { ok: true, raw: res.data }
+  },
 }
 
-/**
- * The scan with a structural safety net.
- *
- * A provider that rejects our schema DIALECT (a structural 400, before auth or
- * billing) should not brick scanning: the same request is retried once with no
- * structured-output mode at all, relying on the prompt plus client-side Zod.
- * That retry costs nothing extra — a structurally rejected request is never
- * billed. Auth failures (401/403) and everything else pass through untouched.
- */
+// ---------------------------------------------------------------------------
+// Direct Compatibility Wrappers (reused across orchestrator and existing code)
+// ---------------------------------------------------------------------------
+
+export async function runScan(req: ScanRequest, fetchImpl: typeof fetch = fetch): Promise<ScanOutcome> {
+  return AIService.analyzeFood(
+    [...req.imagesBase64],
+    req.localSignalsBlock,
+    { fixBlock: req.fixBlock, keepFraction: req.keepFraction, timeoutMs: req.timeoutMs },
+    fetchImpl,
+  )
+}
+
 export async function runScanWithFallback(
   req: ScanRequest,
   fetchImpl: typeof fetch = fetch,
 ): Promise<ScanOutcome & { usedSchemaFallback?: boolean }> {
-  const first = await runScan(req, fetchImpl)
-  const structural =
-    !first.ok && first.error.httpStatus === 400 && req.jsonSchema != null
-  if (!structural) return first
-
-  const second = await runScan({ ...req, jsonSchema: null }, fetchImpl)
-  return second.ok ? { ...second, usedSchemaFallback: true } : first
+  return runScan(req, fetchImpl)
 }
 
-/**
- * Nutrition-label transcription: one image in, one LabelPayload-shaped JSON
- * out. No tools, no structured-output mode; validated by the caller.
- */
 export async function runLabelScan(
-  provider: ProviderId,
-  input: { model: string; imageBase64: string },
-  credential: Credential,
+  _provider: ProviderId | string,
+  input: { model?: string; imageBase64: string },
+  _credential?: unknown,
   fetchImpl: typeof fetch = fetch,
   timeoutMs = 30_000,
 ): Promise<WebLookupOutcome> {
-  return postVisionJson(provider, buildLabelScanRequest(provider, input, credential), fetchImpl, timeoutMs)
+  return AIService.analyzeNutritionLabel(input.imageBase64, { timeoutMs }, fetchImpl)
 }
 
-/**
- * Free-text exercise estimate — the one exercise path a model owns, labeled
- * as such in the UI. Text in, {label, duration_min, calories_kcal} out.
- */
-export async function runExerciseEstimate(
-  provider: ProviderId,
-  input: { model: string; description: string; weightKg: number | null },
-  credential: Credential,
-  fetchImpl: typeof fetch = fetch,
-  timeoutMs = 20_000,
-): Promise<WebLookupOutcome> {
-  const built = buildTextJsonRequest(
-    provider,
-    { model: input.model, instruction: buildExerciseEstimateInstruction(input.description, input.weightKg) },
-    credential,
-    EXERCISE_ESTIMATE_PROMPT_VERSION,
-  )
-  return postVisionJson(provider, built, fetchImpl, timeoutMs)
-}
-
-/** Receipt transcription: same transport, different instruction and validator. */
 export async function runReceiptScan(
-  provider: ProviderId,
-  input: { model: string; imageBase64: string },
-  credential: Credential,
+  _provider: ProviderId | string,
+  input: { model?: string; imageBase64: string },
+  _credential?: unknown,
   fetchImpl: typeof fetch = fetch,
   timeoutMs = 30_000,
 ): Promise<WebLookupOutcome> {
-  return postVisionJson(provider, buildReceiptScanRequest(provider, input, credential), fetchImpl, timeoutMs)
-}
-
-async function postVisionJson(
-  provider: ProviderId,
-  built: { url: string; headers: Record<string, string>; body: unknown },
-  fetchImpl: typeof fetch,
-  timeoutMs: number,
-): Promise<WebLookupOutcome> {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), timeoutMs)
-  try {
-    const res = await fetchImpl(built.url, {
-      method: 'POST',
-      headers: built.headers,
-      body: JSON.stringify(built.body),
-      signal: controller.signal,
-    })
-    const text = await res.text()
-    if (!res.ok) return { ok: false, error: classify(res.status, text) }
-
-    let j: Record<string, any>
-    try {
-      j = JSON.parse(text) as Record<string, any>
-    } catch {
-      return { ok: false, error: { kind: 'schema-violation', message: 'The provider returned malformed JSON.', retryable: false } }
-    }
-
-    let out: string | null = null
-    if (provider === 'anthropic') {
-      const texts = (j.content ?? []).filter((b: any) => b?.type === 'text')
-      out = texts.length ? texts[texts.length - 1].text : null
-    } else if (provider === 'openai') {
-      out = j.choices?.[0]?.message?.content ?? null
-    } else {
-      out = (j.candidates?.[0]?.content?.parts ?? []).map((p: any) => p?.text ?? '').join('') || null
-    }
-    if (!out) {
-      return { ok: false, error: { kind: 'schema-violation', message: 'The provider returned no text.', retryable: false } }
-    }
-
-    const fenced = out.replace(/```(?:json)?/g, '').trim()
-    const start = fenced.indexOf('{')
-    const end = fenced.lastIndexOf('}')
-    if (start < 0 || end <= start) {
-      return { ok: false, error: { kind: 'schema-violation', message: 'No JSON in the response.', retryable: false } }
-    }
-    try {
-      return { ok: true, raw: JSON.parse(fenced.slice(start, end + 1)) }
-    } catch {
-      return { ok: false, error: { kind: 'schema-violation', message: 'The response JSON did not parse.', retryable: false } }
-    }
-  } catch (err) {
-    if ((err as Error)?.name === 'AbortError') {
-      return { ok: false, error: { kind: 'timeout-ambiguous', message: 'The scan timed out.', retryable: false } }
-    }
-    return { ok: false, error: { kind: 'offline', message: 'No connection to the provider.', retryable: true } }
-  } finally {
-    clearTimeout(timer)
-  }
-}
-
-/**
- * The web-lookup refinement call — the provider's server-side search tool.
- *
- * No structured-output mode here (it does not compose with search on every
- * provider), so the JSON is fished out of prose defensively: last text block,
- * markdown fences stripped, outermost braces isolated. The caller validates
- * with WebLookupResultZ — this function only transports.
- */
-export interface WebLookupOutcome {
-  ok: boolean
-  raw?: unknown
-  error?: ScanFailure
+  return AIService.analyzeReceipt(input.imageBase64, { timeoutMs }, fetchImpl)
 }
 
 export async function runWebLookup(
-  provider: ProviderId,
-  input: { model: string; itemName: string; brand: string | null; visualContext?: string | null },
-  credential: Credential,
+  _provider: ProviderId | string,
+  input: { model?: string; itemName: string; brand: string | null; visualContext?: string | null },
+  _credential?: unknown,
   fetchImpl: typeof fetch = fetch,
   timeoutMs = 30_000,
 ): Promise<WebLookupOutcome> {
-  const built = buildWebLookupRequest(provider, input, credential)
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), timeoutMs)
-  try {
-    const res = await fetchImpl(built.url, {
-      method: 'POST',
-      headers: built.headers,
-      body: JSON.stringify(built.body),
-      signal: controller.signal,
-    })
-    const text = await res.text()
-    if (!res.ok) return { ok: false, error: classify(res.status, text) }
+  return AIService.lookupBrandedFood(input.itemName, input.brand, input.visualContext, { timeoutMs }, fetchImpl)
+}
 
-    let j: Record<string, any>
-    try {
-      j = JSON.parse(text) as Record<string, any>
-    } catch {
-      return { ok: false, error: { kind: 'schema-violation', message: 'The provider returned malformed JSON.', retryable: false } }
-    }
-    let out: string | null = null
-    if (provider === 'anthropic') {
-      // Content is a block ARRAY interleaving tool use and text; the answer is
-      // the LAST text block, not the first.
-      const texts = (j.content ?? []).filter((b: any) => b?.type === 'text')
-      out = texts.length ? texts[texts.length - 1].text : null
-    } else if (provider === 'openai') {
-      // Responses API: output[] items; the message item holds output_text parts.
-      const msg = (j.output ?? []).find((o: any) => o?.type === 'message')
-      out = msg?.content?.map((c: any) => c?.text ?? '').join('') ?? j.output_text ?? null
-    } else {
-      out = (j.candidates?.[0]?.content?.parts ?? []).map((p: any) => p?.text ?? '').join('') || null
-    }
-    if (!out) {
-      return { ok: false, error: { kind: 'schema-violation', message: 'The provider returned no text.', retryable: false } }
-    }
-
-    const fenced = out.replace(/```(?:json)?/g, '').trim()
-    const start = fenced.indexOf('{')
-    const end = fenced.lastIndexOf('}')
-    if (start < 0 || end <= start) {
-      return { ok: false, error: { kind: 'schema-violation', message: 'No JSON in the response.', retryable: false } }
-    }
-    try {
-      return { ok: true, raw: JSON.parse(fenced.slice(start, end + 1)) }
-    } catch {
-      return { ok: false, error: { kind: 'schema-violation', message: 'The response JSON did not parse.', retryable: false } }
-    }
-  } catch (err) {
-    if ((err as Error)?.name === 'AbortError') {
-      return { ok: false, error: { kind: 'timeout-ambiguous', message: 'The lookup timed out.', retryable: false } }
-    }
-    return { ok: false, error: { kind: 'offline', message: 'No connection to the provider.', retryable: true } }
-  } finally {
-    clearTimeout(timer)
-  }
+export async function runExerciseEstimate(
+  _provider: ProviderId | string,
+  input: { model?: string; description: string; weightKg: number | null },
+  _credential?: unknown,
+  fetchImpl: typeof fetch = fetch,
+  timeoutMs = 20_000,
+): Promise<WebLookupOutcome> {
+  return AIService.estimateExercise(input.description, input.weightKg, { timeoutMs }, fetchImpl)
 }

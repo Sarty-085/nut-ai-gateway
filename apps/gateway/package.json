@@ -1,0 +1,24 @@
+{
+  "name": "@nutai/gateway",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-or-later",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "npx tsx watch src/index.ts",
+    "start": "npx tsx src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@nutai/core-schema": "*",
+    "@nutai/prompt": "*",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.2",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}

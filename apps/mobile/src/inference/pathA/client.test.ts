@@ -1,191 +1,221 @@
 import { describe, expect, it, vi } from 'vitest'
-import { runLabelScan, runScan, runScanWithFallback, runWebLookup } from './client'
+import {
+  AIService,
+  runExerciseEstimate,
+  runLabelScan,
+  runReceiptScan,
+  runScan,
+  runScanWithFallback,
+  runWebLookup,
+} from './client'
 
-/**
- * The cloud client against scripted responses: envelope extraction for every
- * provider, the structural-400 fallback, and the defensive JSON fishing that
- * the tool-using calls need. No network — every byte is scripted.
- */
-
-type Call = { url: string; body: any }
+type Call = { url: string; body: any; headers: Record<string, string> }
 
 function scripted(responses: Array<{ status: number; body: string }>) {
   const calls: Call[] = []
   const impl = vi.fn(async (url: any, init: any) => {
-    calls.push({ url: String(url), body: init?.body ? JSON.parse(init.body) : undefined })
+    calls.push({
+      url: String(url),
+      body: init?.body ? JSON.parse(init.body) : undefined,
+      headers: init?.headers ?? {},
+    })
     const r = responses[Math.min(calls.length - 1, responses.length - 1)]!
-    return { ok: r.status >= 200 && r.status < 300, status: r.status, text: async () => r.body } as Response
+    return {
+      ok: r.status >= 200 && r.status < 300,
+      status: r.status,
+      text: async () => r.body,
+    } as Response
   })
   return { calls, impl: impl as unknown as typeof fetch }
 }
 
-const SCAN_REQ = (jsonSchema: unknown = { type: 'object' }) => ({
-  provider: 'anthropic' as const,
-  model: 'claude-haiku-4-5-20251001',
-  credential: { kind: 'api_key' as const, value: 'sk' },
-  imagesBase64: ['AAAA'],
-  localSignalsBlock: '',
-  jsonSchema,
-})
-
-describe('runScan envelope extraction', () => {
-  it('anthropic: parses the JSON out of content[0].text and keeps REAL token counts', async () => {
-    const { impl } = scripted([
+describe('AIService / Gateway Client', () => {
+  it('analyzeFood: posts to /v1/analyze with bearer auth and extracts normalized result', async () => {
+    const { calls, impl } = scripted([
       {
         status: 200,
         body: JSON.stringify({
-          content: [{ type: 'text', text: '{"is_food":true}' }],
-          usage: { input_tokens: 1200, output_tokens: 340 },
+          ok: true,
+          data: { schema_version: '1.0.0', is_food: true, items: [] },
+          meta: {
+            provider: 'google',
+            model: 'gemini-flash',
+            resourceId: 'google-01',
+            inputTokens: 500,
+            outputTokens: 120,
+            costUsd: 0.0002,
+            latencyMs: 320,
+            promptVersion: '1.0.0',
+          },
         }),
       },
     ])
-    const r = await runScan(SCAN_REQ(), impl)
+
+    const r = await AIService.analyzeFood(['mock-base64'], 'context', {}, impl)
     expect(r.ok).toBe(true)
     if (r.ok) {
-      expect(r.value.raw).toEqual({ is_food: true })
-      expect(r.value.inputTokens).toBe(1200)
-      expect(r.value.outputTokens).toBe(340)
-      // Cost is arithmetic from the catalog price, never an estimate.
-      expect(r.value.costUsd).toBeCloseTo((1200 * 1 + 340 * 5) / 1_000_000, 8)
+      expect(r.value.raw).toEqual({ schema_version: '1.0.0', is_food: true, items: [] })
+      expect(r.value.inputTokens).toBe(500)
+      expect(r.value.costUsd).toBe(0.0002)
+      expect(r.value.provider).toBe('google')
+      expect(r.value.resourceId).toBe('google-01')
     }
+    expect(calls[0]!.url).toContain('/v1/analyze')
+    expect(calls[0]!.headers.Authorization).toContain('Bearer')
   })
 
-  it('openai: choices[0].message.content', async () => {
-    const { impl } = scripted([
-      {
-        status: 200,
-        body: JSON.stringify({
-          choices: [{ message: { content: '{"x":1}' } }],
-          usage: { prompt_tokens: 10, completion_tokens: 5 },
-        }),
-      },
-    ])
-    const r = await runScan({ ...SCAN_REQ(), provider: 'openai' }, impl)
-    expect(r.ok).toBe(true)
-    if (r.ok) expect(r.value.raw).toEqual({ x: 1 })
-  })
-
-  it('gemini: candidates[0].content.parts[0].text', async () => {
-    const { impl } = scripted([
-      {
-        status: 200,
-        body: JSON.stringify({
-          candidates: [{ content: { parts: [{ text: '{"y":2}' }] } }],
-          usageMetadata: { promptTokenCount: 9, candidatesTokenCount: 3 },
-        }),
-      },
-    ])
-    const r = await runScan({ ...SCAN_REQ(), provider: 'google' }, impl)
-    expect(r.ok).toBe(true)
-    if (r.ok) expect(r.value.raw).toEqual({ y: 2 })
-  })
-
-  it('names the six failure states from status codes', async () => {
-    for (const [status, kind] of [
-      [401, 'key-invalid'],
-      [402, 'quota-exhausted'],
-      [404, 'model-unavailable'],
-      [429, 'error-retryable'],
-      [500, 'error-retryable'],
-    ] as const) {
-      const { impl } = scripted([{ status, body: '{}' }])
-      const r = await runScan(SCAN_REQ(), impl)
-      expect(r.ok).toBe(false)
-      if (!r.ok) expect(r.error.kind, `status ${status}`).toBe(kind)
-    }
-  })
-})
-
-describe('runScanWithFallback', () => {
-  it('retries a structural 400 once with NO structured output', async () => {
+  it('analyzeNutritionLabel: posts to /v1/label-scan', async () => {
     const { calls, impl } = scripted([
-      { status: 400, body: '{"error":"schema not supported"}' },
-      {
-        status: 200,
-        body: JSON.stringify({ content: [{ type: 'text', text: '{"ok":true}' }], usage: {} }),
-      },
-    ])
-    const r = await runScanWithFallback(SCAN_REQ(), impl)
-    expect(r.ok).toBe(true)
-    expect(r.usedSchemaFallback).toBe(true)
-    expect(calls).toHaveLength(2)
-    // First request carried the schema; the retry must NOT.
-    expect(JSON.stringify(calls[0]!.body)).toContain('output_config')
-    expect(JSON.stringify(calls[1]!.body)).not.toContain('output_config')
-  })
-
-  it('does NOT retry auth failures — a 401 is not a dialect problem', async () => {
-    const { calls, impl } = scripted([{ status: 401, body: '{}' }])
-    const r = await runScanWithFallback(SCAN_REQ(), impl)
-    expect(r.ok).toBe(false)
-    expect(calls).toHaveLength(1)
-  })
-
-  it('does not loop: a 400 on the schema-free retry reports the ORIGINAL error', async () => {
-    const { calls, impl } = scripted([
-      { status: 400, body: '{"error":"first"}' },
-      { status: 400, body: '{"error":"second"}' },
-    ])
-    const r = await runScanWithFallback(SCAN_REQ(), impl)
-    expect(r.ok).toBe(false)
-    expect(calls).toHaveLength(2)
-  })
-})
-
-describe('runWebLookup JSON fishing', () => {
-  it('anthropic: takes the LAST text block — tool blocks interleave before it', async () => {
-    const { impl } = scripted([
       {
         status: 200,
         body: JSON.stringify({
-          content: [
-            { type: 'text', text: 'Searching…' },
-            { type: 'server_tool_use', name: 'web_search' },
-            { type: 'web_search_tool_result', content: [] },
-            { type: 'text', text: '```json\n{"found":true,"source_url":"https://x.com","question":null,"options":[]}\n```' },
-          ],
+          ok: true,
+          data: { product_name: 'Almond Milk', serving_g: 240, per_serving: { calories_kcal: 30 } },
         }),
       },
     ])
-    const r = await runWebLookup('anthropic', { model: 'm', itemName: 'x', brand: null }, { kind: 'api_key', value: 'k' }, impl)
+
+    const r = await AIService.analyzeNutritionLabel('label-base64', {}, impl)
     expect(r.ok).toBe(true)
+    expect(calls[0]!.url).toContain('/v1/label-scan')
+    expect((r.raw as any).product_name).toBe('Almond Milk')
+  })
+
+  it('analyzeReceipt: posts to /v1/receipt-scan', async () => {
+    const { calls, impl } = scripted([
+      {
+        status: 200,
+        body: JSON.stringify({
+          ok: true,
+          data: { merchant: 'Chipotle', items: [{ name: 'Burrito Bowl', quantity: 1 }] },
+        }),
+      },
+    ])
+
+    const r = await AIService.analyzeReceipt('receipt-base64', {}, impl)
+    expect(r.ok).toBe(true)
+    expect(calls[0]!.url).toContain('/v1/receipt-scan')
+    expect((r.raw as any).merchant).toBe('Chipotle')
+  })
+
+  it('lookupBrandedFood: posts to /v1/web-lookup', async () => {
+    const { calls, impl } = scripted([
+      {
+        status: 200,
+        body: JSON.stringify({
+          ok: true,
+          data: { found: true, source_url: 'https://brand.com', options: [] },
+        }),
+      },
+    ])
+
+    const r = await AIService.lookupBrandedFood('Chicken Sandwich', 'Popeyes', null, {}, impl)
+    expect(r.ok).toBe(true)
+    expect(calls[0]!.url).toContain('/v1/web-lookup')
     expect((r.raw as any).found).toBe(true)
   })
 
-  it('openai Responses API: finds the message item in output[]', async () => {
+  it('estimateExercise: posts to /v1/exercise-estimate', async () => {
+    const { calls, impl } = scripted([
+      {
+        status: 200,
+        body: JSON.stringify({
+          ok: true,
+          data: { label: 'Cycling', duration_min: 45, calories_kcal: 400 },
+        }),
+      },
+    ])
+
+    const r = await AIService.estimateExercise('45 mins cycling', 75, {}, impl)
+    expect(r.ok).toBe(true)
+    expect(calls[0]!.url).toContain('/v1/exercise-estimate')
+    expect((r.raw as any).calories_kcal).toBe(400)
+  })
+
+  it('maps gateway errors accurately into ScanFailureKind', async () => {
+    for (const [code, expectedKind] of [
+      ['AUTH_FAILED', 'key-invalid'],
+      ['FORBIDDEN', 'key-invalid'],
+      ['QUOTA_EXHAUSTED', 'quota-exhausted'],
+      ['MODEL_UNAVAILABLE', 'model-unavailable'],
+      ['RATE_LIMITED', 'error-retryable'],
+      ['TIMEOUT', 'timeout-ambiguous'],
+      ['CONTENT_REFUSAL', 'content-refusal'],
+      ['SCHEMA_VIOLATION', 'schema-violation'],
+    ] as const) {
+      const { impl } = scripted([
+        {
+          status: 400,
+          body: JSON.stringify({ ok: false, error: { code, message: 'Sample error' } }),
+        },
+      ])
+      const r = await AIService.analyzeFood(['test'], '', {}, impl)
+      expect(r.ok).toBe(false)
+      if (!r.ok) {
+        expect(r.error.kind).toBe(expectedKind)
+      }
+    }
+  })
+
+  it('handles offline / network disconnect gracefully without crashing', async () => {
+    const impl = vi.fn().mockRejectedValue(new Error('Network failure'))
+    const r = await AIService.analyzeFood(['test'], '', {}, impl as unknown as typeof fetch)
+    expect(r.ok).toBe(false)
+    if (!r.ok) {
+      expect(r.error.kind).toBe('offline')
+      expect(r.error.retryable).toBe(true)
+    }
+  })
+})
+
+describe('runScan & compatibility wrappers', () => {
+  it('runScan delegates to AIService.analyzeFood', async () => {
     const { impl } = scripted([
       {
         status: 200,
         body: JSON.stringify({
-          output: [
-            { type: 'web_search_call' },
-            { type: 'message', content: [{ type: 'output_text', text: '{"found":false,"source_url":null,"question":null,"options":[]}' }] },
-          ],
+          ok: true,
+          data: { is_food: true },
+          meta: { provider: 'google', model: 'flash' },
         }),
       },
     ])
-    const r = await runWebLookup('openai', { model: 'm', itemName: 'x', brand: null }, { kind: 'api_key', value: 'k' }, impl)
+    const r = await runScan({ imagesBase64: ['AAAA'] }, impl)
     expect(r.ok).toBe(true)
-    expect((r.raw as any).found).toBe(false)
   })
 
-  it('prose with no JSON object is schema-violation, not a crash and not offline', async () => {
+  it('runScanWithFallback succeeds with gateway response', async () => {
     const { impl } = scripted([
-      { status: 200, body: JSON.stringify({ content: [{ type: 'text', text: 'I could not find anything.' }] }) },
+      {
+        status: 200,
+        body: JSON.stringify({
+          ok: true,
+          data: { is_food: true },
+          meta: { provider: 'google', model: 'flash' },
+        }),
+      },
     ])
-    const r = await runWebLookup('anthropic', { model: 'm', itemName: 'x', brand: null }, { kind: 'api_key', value: 'k' }, impl)
-    expect(r.ok).toBe(false)
-    expect(r.error?.kind).toBe('schema-violation')
-  })
-})
-
-describe('runLabelScan', () => {
-  it('openai label scans use chat completions, not the Responses API', async () => {
-    const { calls, impl } = scripted([
-      { status: 200, body: JSON.stringify({ choices: [{ message: { content: '{"product_name":null}' } }] }) },
-    ])
-    const r = await runLabelScan('openai', { model: 'm', imageBase64: 'AAAA' }, { kind: 'api_key', value: 'k' }, impl)
+    const r = await runScanWithFallback({ imagesBase64: ['AAAA'] }, impl)
     expect(r.ok).toBe(true)
-    expect(calls[0]!.url).toContain('/v1/chat/completions')
+  })
+
+  it('runLabelScan, runReceiptScan, runWebLookup, runExerciseEstimate delegate properly', async () => {
+    const { impl } = scripted([
+      {
+        status: 200,
+        body: JSON.stringify({ ok: true, data: { status: 'success' } }),
+      },
+    ])
+    const l = await runLabelScan('google', { imageBase64: 'AAAA' }, null, impl)
+    expect(l.ok).toBe(true)
+
+    const rc = await runReceiptScan('google', { imageBase64: 'AAAA' }, null, impl)
+    expect(rc.ok).toBe(true)
+
+    const w = await runWebLookup('google', { itemName: 'Burger', brand: null }, null, impl)
+    expect(w.ok).toBe(true)
+
+    const e = await runExerciseEstimate('google', { description: 'run', weightKg: 70 }, null, impl)
+    expect(e.ok).toBe(true)
   })
 })

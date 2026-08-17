@@ -96,7 +96,7 @@ export function buildLabelScanRequest(
         {
           role: 'user',
           parts: [
-            { inline_data: { mime_type: 'image/jpeg', data: input.imageBase64 } },
+            { inlineData: { mimeType: 'image/jpeg', data: input.imageBase64 } },
             { text: LABEL_SCAN_INSTRUCTION },
           ],
         },

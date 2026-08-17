@@ -25,10 +25,16 @@ export default defineConfig({
       '@nutai/clamp': pkg('clamp'),
       '@nutai/pipeline': pkg('pipeline'),
       '@nutai/eval': fileURLToPath(new URL('./eval/src/index.ts', import.meta.url)),
+      '@nutai/gateway': fileURLToPath(new URL('./apps/gateway/src/index.ts', import.meta.url)),
     },
   },
   test: {
-    include: ['packages/**/*.test.ts', 'eval/**/*.test.ts', 'apps/mobile/src/**/*.test.ts'],
+    include: [
+      'packages/**/*.test.ts',
+      'eval/**/*.test.ts',
+      'apps/mobile/src/**/*.test.ts',
+      'apps/gateway/src/**/*.test.ts',
+    ],
     environment: 'node',
   },
 })

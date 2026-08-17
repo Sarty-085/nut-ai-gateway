@@ -143,6 +143,7 @@ describe('display rounding — Regime B', () => {
       protein_g: 52.69,
       fat_g: 6.19,
       carbs_g: 50.0,
+      sugar_g: 0,
       fiber_g: 4.2,
       sodium_mg: 611.4,
     })

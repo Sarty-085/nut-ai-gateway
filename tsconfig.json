@@ -48,6 +48,9 @@
       ],
       "@nutai/eval": [
         "eval/src/index.ts"
+      ],
+      "@nutai/gateway": [
+        "apps/gateway/src/index.ts"
       ]
     },
     "lib": [
@@ -57,6 +60,7 @@
   },
   "include": [
     "packages/**/src/**/*",
+    "apps/gateway/src/**/*",
     "eval/**/*",
     "scripts/**/*",
     "vitest.config.ts"
