@@ -165,17 +165,5 @@ Release APKs are available in the repository root and on GitHub Releases:
 
 ---
 
-## 👥 Adding Collaborators & Team Members
-
-To give team members push access or project permissions on GitHub:
-1. Go to your repository on GitHub: **[https://github.com/Sarty-085/nut-ai-gateway](https://github.com/Sarty-085/nut-ai-gateway)**.
-2. Click **Settings** (gear icon in the top navigation bar).
-3. In the left sidebar, click **Collaborators** under "Access".
-4. Click the green **"Add people"** button.
-5. Enter your teammate's GitHub username or email address and select their permission level (**Write** or **Admin**).
-6. Send the invitation — once accepted, they will have full collaborator access to push branches and deploy updates!
-
----
-
 ## 📄 License
 This project is licensed under the **AGPL-3.0 License**.
