@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": false,
+    "noEmit": false,
+    "outDir": "./dist",
+    "baseUrl": "../..",
+    "paths": {
+      "@nutai/core-schema": ["packages/core-schema/src/index.ts"],
+      "@nutai/prompt": ["packages/prompt/src/index.ts"]
+    },
+    "types": ["node"]
+  },
+  "include": ["src/**/*"],
+  "exclude": ["src/__tests__/**/*", "dist", "node_modules"]
+}
