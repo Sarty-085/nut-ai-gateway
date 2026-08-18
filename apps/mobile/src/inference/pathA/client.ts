@@ -284,6 +284,24 @@ export const AIService = {
     }
     return { ok: true, raw: res.data }
   },
+
+  async analyzeBodyScan(
+    imageBase64: string,
+    localSignalsBlock?: string,
+    opts?: { timeoutMs?: number },
+    fetchImpl: typeof fetch = fetch,
+  ): Promise<WebLookupOutcome> {
+    const res = await postGateway(
+      '/v1/body-scan',
+      { imageBase64, localSignalsBlock },
+      fetchImpl,
+      opts?.timeoutMs ?? 45_000,
+    )
+    if (!res.ok || !res.data) {
+      return { ok: false, error: res.error }
+    }
+    return { ok: true, raw: res.data }
+  },
 }
 
 // ---------------------------------------------------------------------------
@@ -344,4 +362,12 @@ export async function runExerciseEstimate(
   timeoutMs = 20_000,
 ): Promise<WebLookupOutcome> {
   return AIService.estimateExercise(input.description, input.weightKg, { timeoutMs }, fetchImpl)
+}
+
+export async function runBodyScan(
+  input: { imageBase64: string; localSignalsBlock?: string },
+  fetchImpl: typeof fetch = fetch,
+  timeoutMs = 45_000,
+): Promise<WebLookupOutcome> {
+  return AIService.analyzeBodyScan(input.imageBase64, input.localSignalsBlock, { timeoutMs }, fetchImpl)
 }

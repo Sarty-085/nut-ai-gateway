@@ -1,4 +1,6 @@
 import {
+  BODY_SCAN_PROMPT_VERSION,
+  buildBodyScanRequest,
   buildExerciseEstimateInstruction,
   buildGeminiRequest,
   buildLabelScanRequest,
@@ -12,6 +14,7 @@ import {
   RECEIPT_SCAN_PROMPT_VERSION,
 } from '@nutai/prompt'
 import {
+  BodyScanPayloadZ,
   ExerciseEstimateZ,
   LabelPayloadZ,
   ReceiptPayloadZ,
@@ -22,6 +25,7 @@ import {
 import { classifyUpstreamError, InvalidRequestError, SchemaViolationError, TimeoutError } from '../errors.js'
 import type {
   AnalyzeGatewayRequest,
+  BodyScanGatewayRequest,
   ExerciseEstimateGatewayRequest,
   LabelScanGatewayRequest,
   ProviderResource,
@@ -276,6 +280,62 @@ export class GoogleAdapter implements ProviderAdapter {
         provider: 'google',
         model,
         promptVersion: EXERCISE_ESTIMATE_PROMPT_VERSION,
+      },
+    }
+  }
+
+  public async bodyScan(
+    resource: ProviderResource,
+    model: string,
+    req: BodyScanGatewayRequest,
+    fetchImpl: typeof fetch = fetch,
+  ): Promise<AdapterExecutionResult> {
+    if (!req.imageBase64) {
+      throw new InvalidRequestError('Body scan requires an imageBase64 payload.')
+    }
+    const timeoutMs = req.timeoutMs ?? 45_000
+    const built = buildBodyScanRequest(
+      'google',
+      {
+        model,
+        imageBase64: req.imageBase64,
+        localSignalsBlock: req.localSignalsBlock,
+      },
+      { kind: 'api_key', value: resource.resolvedSecret },
+    )
+
+    const { json } = await this.fetchJson(built.url, built.headers, built.body, timeoutMs, fetchImpl)
+
+    const rawText = json?.candidates?.[0]?.content?.parts?.[0]?.text
+    if (!rawText) {
+      throw new SchemaViolationError('Gemini returned no text content for body scan')
+    }
+
+    let parsedRaw: unknown
+    try {
+      parsedRaw = typeof rawText === 'string' ? JSON.parse(rawText) : rawText
+    } catch {
+      parsedRaw = extractJsonBlock(rawText)
+    }
+
+    const validated = BodyScanPayloadZ.safeParse(parsedRaw)
+    if (!validated.success) {
+      throw new SchemaViolationError(`Body scan validation failed: ${validated.error.message}`)
+    }
+
+    const inputTokens = json.usageMetadata?.promptTokenCount ?? 0
+    const outputTokens = json.usageMetadata?.candidatesTokenCount ?? 0
+    const costUsd = computeScanCost('google', model, inputTokens, outputTokens)
+
+    return {
+      data: validated.data,
+      meta: {
+        provider: 'google',
+        model,
+        inputTokens,
+        outputTokens,
+        costUsd,
+        promptVersion: BODY_SCAN_PROMPT_VERSION,
       },
     }
   }

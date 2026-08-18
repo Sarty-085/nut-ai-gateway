@@ -1,6 +1,7 @@
 import type { ProviderId } from '@nutai/prompt'
 import type {
   AnalyzeGatewayRequest,
+  BodyScanGatewayRequest,
   ExerciseEstimateGatewayRequest,
   LabelScanGatewayRequest,
   NormalizedResponseMeta,
@@ -49,6 +50,13 @@ export interface ProviderAdapter {
     resource: ProviderResource,
     model: string,
     req: ExerciseEstimateGatewayRequest,
+    fetchImpl?: typeof fetch,
+  ): Promise<AdapterExecutionResult>
+
+  bodyScan(
+    resource: ProviderResource,
+    model: string,
+    req: BodyScanGatewayRequest,
     fetchImpl?: typeof fetch,
   ): Promise<AdapterExecutionResult>
 }

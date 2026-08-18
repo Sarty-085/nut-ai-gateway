@@ -140,7 +140,7 @@ describe('the Gemini free tier is blocked for photo scans', () => {
 
 describe('cost', () => {
   it('computes from real token counts, not an estimate', () => {
-    const c = computeScanCost('anthropic', 'claude-haiku-4-5-20251001', 1500, 800)
+    const c = computeScanCost('anthropic', 'claude-3-5-haiku-20241022', 1500, 800)
     expect(c).toBeCloseTo((1500 / 1e6) * 1 + (800 / 1e6) * 5, 9)
   })
 

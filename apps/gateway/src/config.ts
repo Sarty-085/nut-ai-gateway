@@ -26,6 +26,7 @@ function buildDefaultModels(env: Record<string, string | undefined>): Record<Pro
       'receipt-scan': env['MODEL_RECEIPT_SCAN'] ?? env['GOOGLE_RECEIPT_MODEL'] ?? env['GOOGLE_VISION_MODEL'] ?? gCheap,
       'web-lookup': env['MODEL_WEB_LOOKUP'] ?? env['GOOGLE_LOOKUP_MODEL'] ?? env['GOOGLE_VISION_MODEL'] ?? gCheap,
       'exercise-estimate': env['MODEL_EXERCISE_ESTIMATE'] ?? env['GOOGLE_EXERCISE_MODEL'] ?? gCheap,
+      'body-scan': env['MODEL_BODY_SCAN'] ?? env['GOOGLE_VISION_MODEL'] ?? gCheap,
     },
     anthropic: {
       'food-analysis': env['ANTHROPIC_VISION_MODEL'] ?? aCheap,
@@ -33,6 +34,7 @@ function buildDefaultModels(env: Record<string, string | undefined>): Record<Pro
       'receipt-scan': env['ANTHROPIC_RECEIPT_MODEL'] ?? env['ANTHROPIC_VISION_MODEL'] ?? aCheap,
       'web-lookup': env['ANTHROPIC_LOOKUP_MODEL'] ?? env['ANTHROPIC_VISION_MODEL'] ?? aCheap,
       'exercise-estimate': env['ANTHROPIC_EXERCISE_MODEL'] ?? aCheap,
+      'body-scan': env['ANTHROPIC_BODY_MODEL'] ?? env['ANTHROPIC_VISION_MODEL'] ?? aCheap,
     },
     openai: {
       'food-analysis': env['OPENAI_VISION_MODEL'] ?? oCheap,
@@ -40,6 +42,7 @@ function buildDefaultModels(env: Record<string, string | undefined>): Record<Pro
       'receipt-scan': env['OPENAI_RECEIPT_MODEL'] ?? env['OPENAI_VISION_MODEL'] ?? oCheap,
       'web-lookup': env['OPENAI_LOOKUP_MODEL'] ?? env['OPENAI_VISION_MODEL'] ?? oCheap,
       'exercise-estimate': env['OPENAI_EXERCISE_MODEL'] ?? oCheap,
+      'body-scan': env['OPENAI_BODY_MODEL'] ?? env['OPENAI_VISION_MODEL'] ?? oCheap,
     },
   }
 }

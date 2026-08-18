@@ -111,6 +111,7 @@ describe('ProviderRouter', () => {
       receiptScan: vi.fn(),
       webLookup: vi.fn(),
       exerciseEstimate: vi.fn(),
+      bodyScan: vi.fn(),
     }
     router.registerAdapter(mockAdapter)
 
@@ -140,6 +141,7 @@ describe('ProviderRouter', () => {
       receiptScan: vi.fn(),
       webLookup: vi.fn(),
       exerciseEstimate: vi.fn(),
+      bodyScan: vi.fn(),
     }
     router.registerAdapter(mockAdapter)
 
@@ -186,6 +188,7 @@ describe('ProviderRouter', () => {
       receiptScan: vi.fn(),
       webLookup: vi.fn(),
       exerciseEstimate: vi.fn(),
+      bodyScan: vi.fn(),
     }
 
     const mockAnthropic: ProviderAdapter = {
@@ -198,6 +201,7 @@ describe('ProviderRouter', () => {
       receiptScan: vi.fn(),
       webLookup: vi.fn(),
       exerciseEstimate: vi.fn(),
+      bodyScan: vi.fn(),
     }
 
     router.registerAdapter(mockGoogle)
@@ -224,6 +228,7 @@ describe('ProviderRouter', () => {
       receiptScan: vi.fn(),
       webLookup: vi.fn(),
       exerciseEstimate: vi.fn(),
+      bodyScan: vi.fn(),
     }
     router.registerAdapter(mockGoogle)
 
@@ -244,6 +249,7 @@ describe('ProviderRouter', () => {
       receiptScan: vi.fn(),
       webLookup: vi.fn(),
       exerciseEstimate: vi.fn(),
+      bodyScan: vi.fn(),
     }
     const mockAnthropic: ProviderAdapter = {
       provider: 'anthropic',
@@ -252,6 +258,7 @@ describe('ProviderRouter', () => {
       receiptScan: vi.fn(),
       webLookup: vi.fn(),
       exerciseEstimate: vi.fn(),
+      bodyScan: vi.fn(),
     }
     const mockOpenAI: ProviderAdapter = {
       provider: 'openai',
@@ -260,6 +267,7 @@ describe('ProviderRouter', () => {
       receiptScan: vi.fn(),
       webLookup: vi.fn(),
       exerciseEstimate: vi.fn(),
+      bodyScan: vi.fn(),
     }
     router.registerAdapter(mockGoogle)
     router.registerAdapter(mockAnthropic)

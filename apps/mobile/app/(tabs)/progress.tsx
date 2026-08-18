@@ -100,6 +100,28 @@ export default function Progress() {
         </View>
       </View>
 
+      {/* AI Body & Posture Scan Card */}
+      <Pressable
+        onPress={() => router.push('/body-scan' as never)}
+        style={[styles.card, { backgroundColor: '#0f172a', borderColor: '#38bdf8', borderWidth: 1 }]}
+      >
+        <View style={styles.spread}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.xs }}>
+            <Icon name="scan" size={20} color="#38bdf8" />
+            <Text style={[type.heading, { color: '#fff', fontSize: 16 }]}>AI Body & Posture Scan</Text>
+          </View>
+          <View style={{ backgroundColor: 'rgba(56, 189, 248, 0.15)', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 }}>
+            <Text style={{ color: '#38bdf8', fontSize: 11, fontWeight: '700' }}>AI TRAINER</Text>
+          </View>
+        </View>
+        <Text style={[type.caption, { color: '#94a3b8', marginTop: space.xs }]}>
+          Stand in front of your camera for an instant assessment of posture alignment, body-fat range, and personalized corrective drills.
+        </Text>
+        <View style={{ marginTop: space.sm, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' }}>
+          <Text style={{ color: '#38bdf8', fontWeight: '700', fontSize: 13 }}>Launch Body Scan →</Text>
+        </View>
+      </Pressable>
+
       <View style={[styles.card, { backgroundColor: theme.bgSunken }]}>
         <View style={styles.spread}>
           <Text style={[type.caption, { color: theme.textMuted }]}>Current weight</Text>

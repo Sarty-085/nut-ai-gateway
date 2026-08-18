@@ -7,6 +7,7 @@ export type GatewayTask =
   | 'receipt-scan'
   | 'web-lookup'
   | 'exercise-estimate'
+  | 'body-scan'
 
 export type TaskCapability = GatewayTask
 
@@ -163,6 +164,12 @@ export interface WebLookupGatewayRequest extends BaseGatewayRequest {
 export interface ExerciseEstimateGatewayRequest extends BaseGatewayRequest {
   description: string
   weightKg?: number | null
+}
+
+/** Body scan request */
+export interface BodyScanGatewayRequest extends BaseGatewayRequest {
+  imageBase64: string
+  localSignalsBlock?: string
 }
 
 /** Generic gateway outcome */

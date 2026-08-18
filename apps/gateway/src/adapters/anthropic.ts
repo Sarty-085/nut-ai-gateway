@@ -1,6 +1,8 @@
 import {
   anthropicWireSchema,
+  BODY_SCAN_PROMPT_VERSION,
   buildAnthropicRequest,
+  buildBodyScanRequest,
   buildExerciseEstimateInstruction,
   buildLabelScanRequest,
   buildReceiptScanRequest,
@@ -12,6 +14,7 @@ import {
   RECEIPT_SCAN_PROMPT_VERSION,
 } from '@nutai/prompt'
 import {
+  BodyScanPayloadZ,
   ExerciseEstimateZ,
   LabelPayloadZ,
   ReceiptPayloadZ,
@@ -22,6 +25,7 @@ import {
 import { classifyUpstreamError, InvalidRequestError, SchemaViolationError, TimeoutError } from '../errors.js'
 import type {
   AnalyzeGatewayRequest,
+  BodyScanGatewayRequest,
   ExerciseEstimateGatewayRequest,
   LabelScanGatewayRequest,
   ProviderResource,
@@ -279,6 +283,67 @@ export class AnthropicAdapter implements ProviderAdapter {
         provider: 'anthropic',
         model,
         promptVersion: EXERCISE_ESTIMATE_PROMPT_VERSION,
+      },
+    }
+  }
+
+  public async bodyScan(
+    resource: ProviderResource,
+    model: string,
+    req: BodyScanGatewayRequest,
+    fetchImpl: typeof fetch = fetch,
+  ): Promise<AdapterExecutionResult> {
+    if (!req.imageBase64) {
+      throw new InvalidRequestError('Body scan requires an imageBase64 payload.')
+    }
+    const timeoutMs = req.timeoutMs ?? 45_000
+    const credential = {
+      kind: resource.resolvedSecret.startsWith('sk-ant-') ? ('api_key' as const) : ('oauth' as const),
+      value: resource.resolvedSecret,
+    }
+    const built = buildBodyScanRequest(
+      'anthropic',
+      {
+        model,
+        imageBase64: req.imageBase64,
+        localSignalsBlock: req.localSignalsBlock,
+      },
+      credential,
+    )
+
+    const { json } = await this.fetchJson(built.url, built.headers, built.body, timeoutMs, fetchImpl)
+
+    const texts = (json?.content ?? []).filter((b: any) => b?.type === 'text')
+    const out = texts.length ? texts[texts.length - 1].text : null
+    if (!out) {
+      throw new SchemaViolationError('Anthropic returned no text content for body scan')
+    }
+
+    let parsedRaw: unknown
+    try {
+      parsedRaw = typeof out === 'string' ? JSON.parse(out) : out
+    } catch {
+      parsedRaw = extractJsonBlock(out)
+    }
+
+    const validated = BodyScanPayloadZ.safeParse(parsedRaw)
+    if (!validated.success) {
+      throw new SchemaViolationError(`Body scan validation failed: ${validated.error.message}`)
+    }
+
+    const inputTokens = json.usage?.input_tokens ?? 0
+    const outputTokens = json.usage?.output_tokens ?? 0
+    const costUsd = computeScanCost('anthropic', model, inputTokens, outputTokens)
+
+    return {
+      data: validated.data,
+      meta: {
+        provider: 'anthropic',
+        model,
+        inputTokens,
+        outputTokens,
+        costUsd,
+        promptVersion: BODY_SCAN_PROMPT_VERSION,
       },
     }
   }

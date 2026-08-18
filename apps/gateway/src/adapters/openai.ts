@@ -1,4 +1,6 @@
 import {
+  BODY_SCAN_PROMPT_VERSION,
+  buildBodyScanRequest,
   buildExerciseEstimateInstruction,
   buildLabelScanRequest,
   buildOpenAIRequest,
@@ -12,6 +14,7 @@ import {
   RECEIPT_SCAN_PROMPT_VERSION,
 } from '@nutai/prompt'
 import {
+  BodyScanPayloadZ,
   ExerciseEstimateZ,
   LabelPayloadZ,
   ReceiptPayloadZ,
@@ -22,6 +25,7 @@ import {
 import { classifyUpstreamError, InvalidRequestError, SchemaViolationError, TimeoutError } from '../errors.js'
 import type {
   AnalyzeGatewayRequest,
+  BodyScanGatewayRequest,
   ExerciseEstimateGatewayRequest,
   LabelScanGatewayRequest,
   ProviderResource,
@@ -277,6 +281,62 @@ export class OpenAIAdapter implements ProviderAdapter {
         provider: 'openai',
         model,
         promptVersion: EXERCISE_ESTIMATE_PROMPT_VERSION,
+      },
+    }
+  }
+
+  public async bodyScan(
+    resource: ProviderResource,
+    model: string,
+    req: BodyScanGatewayRequest,
+    fetchImpl: typeof fetch = fetch,
+  ): Promise<AdapterExecutionResult> {
+    if (!req.imageBase64) {
+      throw new InvalidRequestError('Body scan requires an imageBase64 payload.')
+    }
+    const timeoutMs = req.timeoutMs ?? 45_000
+    const built = buildBodyScanRequest(
+      'openai',
+      {
+        model,
+        imageBase64: req.imageBase64,
+        localSignalsBlock: req.localSignalsBlock,
+      },
+      { kind: 'api_key', value: resource.resolvedSecret },
+    )
+
+    const { json } = await this.fetchJson(built.url, built.headers, built.body, timeoutMs, fetchImpl)
+
+    const content = json?.choices?.[0]?.message?.content
+    if (!content) {
+      throw new SchemaViolationError('OpenAI returned no content for body scan')
+    }
+
+    let parsedRaw: unknown
+    try {
+      parsedRaw = typeof content === 'string' ? JSON.parse(content) : content
+    } catch {
+      parsedRaw = extractJsonBlock(content)
+    }
+
+    const validated = BodyScanPayloadZ.safeParse(parsedRaw)
+    if (!validated.success) {
+      throw new SchemaViolationError(`Body scan validation failed: ${validated.error.message}`)
+    }
+
+    const inputTokens = json.usage?.prompt_tokens ?? 0
+    const outputTokens = json.usage?.completion_tokens ?? 0
+    const costUsd = computeScanCost('openai', model, inputTokens, outputTokens)
+
+    return {
+      data: validated.data,
+      meta: {
+        provider: 'openai',
+        model,
+        inputTokens,
+        outputTokens,
+        costUsd,
+        promptVersion: BODY_SCAN_PROMPT_VERSION,
       },
     }
   }

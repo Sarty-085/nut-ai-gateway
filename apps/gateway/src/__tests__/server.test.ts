@@ -51,6 +51,10 @@ describe('GatewayServer HTTP Endpoints', () => {
         data: { label: 'Running', duration_min: 30, calories_kcal: 350 },
         meta: { provider: 'google', model: 'mock-model' },
       } as AdapterExecutionResult),
+      bodyScan: vi.fn().mockResolvedValue({
+        data: { schema_version: '1.0.0', is_person_visible: true, refusal_reason: null },
+        meta: { provider: 'google', model: 'mock-model' },
+      } as AdapterExecutionResult),
     }
 
     server.router.registerAdapter(mockGoogle)

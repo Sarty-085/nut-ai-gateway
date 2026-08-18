@@ -12,6 +12,7 @@ import type { ResourceHealthTracker } from './health-tracker.js'
 import type { GatewayRateLimiter } from './rate-limiter.js'
 import type {
   AnalyzeGatewayRequest,
+  BodyScanGatewayRequest,
   ExerciseEstimateGatewayRequest,
   GatewayConfig,
   GatewayResponse,
@@ -266,6 +267,16 @@ export class ProviderRouter {
   ): Promise<GatewayResponse<unknown>> {
     return this.executeTask('exercise-estimate', req, (adapter, resource, model, r, f) =>
       adapter.exerciseEstimate(resource, model, r, f),
+      fetchImpl,
+    )
+  }
+
+  public async bodyScan(
+    req: BodyScanGatewayRequest,
+    fetchImpl: typeof fetch = fetch,
+  ): Promise<GatewayResponse<unknown>> {
+    return this.executeTask('body-scan', req, (adapter, resource, model, r, f) =>
+      adapter.bodyScan(resource, model, r, f),
       fetchImpl,
     )
   }

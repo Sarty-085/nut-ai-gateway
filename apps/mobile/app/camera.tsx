@@ -9,10 +9,11 @@ import { setPhase } from '../src/scan/store'
 import { useTheme } from '../src/theme/ThemeProvider'
 import { MIN_TAP_TARGET, radius, space, type } from '../src/theme/tokens'
 
-type CameraMode = 'food' | 'barcode' | 'label' | 'receipt'
+type CameraMode = 'food' | 'barcode' | 'label' | 'receipt' | 'body'
 
 const MODES: Array<{ id: CameraMode; label: string; icon: IconName }> = [
   { id: 'food', label: 'Scan food', icon: 'scan' },
+  { id: 'body', label: 'Body scan', icon: 'flame' },
   { id: 'barcode', label: 'Barcode', icon: 'barcode' },
   { id: 'label', label: 'Label', icon: 'nutritionLabel' },
   { id: 'receipt', label: 'Receipt', icon: 'receipt' },
@@ -116,6 +117,10 @@ export default function Camera() {
                 accessibilityRole="button"
                 accessibilityLabel={m.label}
                 onPress={() => {
+                  if (m.id === 'body') {
+                    router.push('/body-scan' as never)
+                    return
+                  }
                   barcodeFired.current = false
                   setMode(m.id)
                 }}

@@ -243,6 +243,14 @@ export class GatewayServer {
           this.sendJson(res, response.ok ? 200 : response.error?.httpStatus ?? 500, response)
           return
         }
+
+        if (pathname === '/v1/body-scan') {
+          const body = await this.parseBody(req)
+          const dedupKey = this.dedup.generateKey('body-scan', body, explicitIdemp)
+          const response = await this.dedup.executeOrShare(dedupKey, () => this.router.bodyScan(body))
+          this.sendJson(res, response.ok ? 200 : response.error?.httpStatus ?? 500, response)
+          return
+        }
       }
 
       this.sendJson(res, 404, { ok: false, error: { message: 'Route not found' } })
