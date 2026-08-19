@@ -13,7 +13,7 @@ type CameraMode = 'food' | 'barcode' | 'label' | 'receipt' | 'body'
 
 const MODES: Array<{ id: CameraMode; label: string; icon: IconName }> = [
   { id: 'food', label: 'Scan food', icon: 'scan' },
-  { id: 'body', label: 'Body scan', icon: 'flame' },
+  { id: 'body', label: 'Body scan', icon: 'muscle' },
   { id: 'barcode', label: 'Barcode', icon: 'barcode' },
   { id: 'label', label: 'Label', icon: 'nutritionLabel' },
   { id: 'receipt', label: 'Receipt', icon: 'receipt' },

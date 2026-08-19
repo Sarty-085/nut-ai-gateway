@@ -35,6 +35,7 @@ interface Action {
 const ACTIONS: Action[] = [
   { label: 'Scan Body & Posture', icon: 'muscle', route: '/body-scan' },
   { label: 'Scan Food', icon: 'scan', route: '/camera' },
+  { label: 'Log Weight', icon: 'scale', route: '/log-weight' },
   { label: 'Log Exercise', icon: 'dumbbell', route: '/log-exercise' },
   { label: 'Food Database', icon: 'search', route: '/food-search' },
 ]

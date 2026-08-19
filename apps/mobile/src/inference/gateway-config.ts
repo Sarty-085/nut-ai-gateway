@@ -3,7 +3,7 @@ const GATEWAY_APP_TOKEN_KEY = 'nutai.gateway.token'
 const GATEWAY_ADMIN_TOKEN_KEY = 'nutai.gateway.admin_token'
 
 export const DEFAULT_GATEWAY_URL =
-  process.env['EXPO_PUBLIC_GATEWAY_URL'] || 'http://10.0.2.2:3000'
+  process.env['EXPO_PUBLIC_GATEWAY_URL'] || 'https://nut-ai-gateway.onrender.com'
 
 export const DEFAULT_APP_TOKEN =
   process.env['EXPO_PUBLIC_APP_TOKEN'] || 'nutai-app-default-token'

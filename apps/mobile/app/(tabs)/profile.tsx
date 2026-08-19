@@ -104,7 +104,7 @@ export default function Profile() {
       const picked = await pickBackupFile()
       if (!picked.ok) {
         if (picked.reason !== 'cancelled') {
-          Alert.alert('Not a backup', "That doesn't look like a Nut AI backup file.")
+          Alert.alert('Not a backup', "That doesn't look like a WorkFit AI backup file.")
         }
         return
       }
@@ -122,7 +122,7 @@ export default function Profile() {
                 try {
                   const outcome = await importBackup(picked.payload)
                   if (!outcome.ok) {
-                    Alert.alert('Cannot restore', 'This backup is from a newer version of Nut AI — update the app first.')
+                    Alert.alert('Cannot restore', 'This backup is from a newer version of WorkFit AI — update the app first.')
                     return
                   }
                   await finishRestore()

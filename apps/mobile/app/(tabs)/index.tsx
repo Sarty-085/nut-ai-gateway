@@ -1,6 +1,7 @@
 import { router, useFocusEffect } from 'expo-router'
 import { useCallback, useMemo, useState } from 'react'
 import {
+  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -17,13 +18,16 @@ import {
   activeDays,
   currentGoal,
   dayExerciseKcal,
+  dayMeals,
   dayTotals,
   dayWaterMl,
+  deleteMeal,
   localDate,
   logWater,
   runAdaptive,
   type AdaptiveOutcome,
   type CurrentGoal,
+  type DayMealSummary,
   type DayTotals,
 } from '../../src/data/repo'
 import { useTheme } from '../../src/theme/ThemeProvider'
@@ -73,6 +77,7 @@ export default function Home() {
   const [waterMl, setWaterMl] = useState(0)
   const [exerciseKcalBurned, setExerciseKcalBurned] = useState(0)
   const [streakCount, setStreakCount] = useState(0)
+  const [meals, setMeals] = useState<DayMealSummary[]>([])
 
   const selected = useMemo(() => Date.now() + offset * 86_400_000, [offset])
 
@@ -84,12 +89,13 @@ export default function Home() {
         // changed is the one rendered. Its own gates decide whether it may act.
         const outcome = await runAdaptive(Date.now())
         const dateStr = localDate(selected)
-        const [g, t, w, exKcal, allDays] = await Promise.all([
+        const [g, t, w, exKcal, allDays, mList] = await Promise.all([
           currentGoal(),
           dayTotals(dateStr),
           dayWaterMl(dateStr),
           dayExerciseKcal(dateStr),
           activeDays(),
+          dayMeals(dateStr),
         ])
         if (!alive) return
         setAdaptive(outcome)
@@ -98,12 +104,30 @@ export default function Home() {
         setWaterMl(w)
         setExerciseKcalBurned(exKcal)
         setStreakCount(countStreak(allDays))
+        setMeals(mList)
       })()
       return () => {
         alive = false
       }
     }, [selected]),
   )
+
+  const handleDeleteMeal = async (mealId: number) => {
+    Alert.alert('Delete Meal', 'Remove this meal from your daily log?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          await deleteMeal(mealId)
+          const dateStr = localDate(selected)
+          const [t, mList] = await Promise.all([dayTotals(dateStr), dayMeals(dateStr)])
+          setTotals(t)
+          setMeals(mList)
+        },
+      },
+    ])
+  }
 
   const handleAddWater = async (amount: number) => {
     await logWater(amount, selected)
@@ -296,10 +320,10 @@ export default function Home() {
       </View>
 
       {/* Recently uploaded */}
-      <View style={{ paddingHorizontal: space.lg, marginTop: space.xl }}>
+      <View style={{ paddingHorizontal: space.lg, marginTop: space.xl, paddingBottom: 40 }}>
         <Text style={[type.title, { color: theme.text, fontSize: 24 }]}>Recently uploaded</Text>
 
-        {empty ? (
+        {empty || meals.length === 0 ? (
           <View style={[styles.emptyCard, { backgroundColor: theme.bgSunken }]}>
             <View style={[styles.ghostRow, { backgroundColor: theme.bgElevated }]}>
               <Icon name="bowl" size={26} color={theme.textFaint} />
@@ -313,10 +337,64 @@ export default function Home() {
             </Text>
           </View>
         ) : (
-          <View style={[styles.card, { backgroundColor: theme.bgSunken, borderColor: 'transparent' }]}>
-            <Text style={[type.bodyStrong, { color: theme.text }]}>
-              {totals.mealCount} {totals.mealCount === 1 ? 'meal' : 'meals'} logged
-            </Text>
+          <View style={{ gap: space.md, marginTop: space.sm }}>
+            {meals.map((m) => (
+              <View
+                key={m.id}
+                style={[
+                  styles.card,
+                  { backgroundColor: theme.bgSunken, borderColor: 'transparent', padding: space.md },
+                ]}
+              >
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
+                    <View style={{ backgroundColor: theme.bgElevated, padding: 8, borderRadius: 10 }}>
+                      <Icon name="bowl" size={20} color={theme.protein} />
+                    </View>
+                    <View>
+                      <Text style={[type.heading, { color: theme.text, textTransform: 'capitalize' }]}>
+                        {m.mealSlot}
+                      </Text>
+                      <Text style={[type.caption, { color: theme.textMuted }]}>
+                        {new Date(m.loggedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={[type.bodyStrong, { color: theme.text }]}>{m.totalKcal} kcal</Text>
+                      <Text style={[type.caption, { color: theme.textMuted }]}>
+                        P: {m.totalProtein}g · C: {m.totalCarbs}g · F: {m.totalFat}g
+                      </Text>
+                    </View>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Delete meal"
+                      onPress={() => handleDeleteMeal(m.id)}
+                      hitSlop={space.sm}
+                      style={{ padding: 6, backgroundColor: theme.bgElevated, borderRadius: 8 }}
+                    >
+                      <Icon name="close" size={16} color={theme.textMuted} />
+                    </Pressable>
+                  </View>
+                </View>
+
+                {m.items.length > 0 && (
+                  <View style={{ marginTop: space.sm, paddingTop: space.sm, borderTopWidth: 1, borderColor: theme.border, gap: 4 }}>
+                    {m.items.map((it) => (
+                      <View key={it.id} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                        <Text style={[type.caption, { color: theme.text, flex: 1 }]} numberOfLines={1}>
+                          • {it.displayName} ({it.grams}g)
+                        </Text>
+                        <Text style={[type.caption, { color: theme.textMuted }]}>{it.snapKcal} kcal</Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </View>
+            ))}
+
             {totals.pendingCount > 0 ? (
               <Text style={[type.caption, { color: theme.uncertain, marginTop: space.xs }]}>
                 +{totals.pendingCount} still analyzing — not counted yet

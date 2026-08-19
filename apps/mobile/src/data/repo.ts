@@ -672,3 +672,101 @@ export async function activeDays(): Promise<string[]> {
   return rows.map((r) => r.local_date)
 }
 
+export interface LoggedMealItem {
+  id: number
+  mealId: number
+  displayName: string
+  grams: number
+  snapKcal: number
+  snapProtein: number
+  snapFat: number
+  snapCarb: number
+  loggedAt: number
+}
+
+export interface DayMealSummary {
+  id: number
+  mealSlot: string
+  photoUri: string | null
+  loggedAt: number
+  totalKcal: number
+  totalProtein: number
+  totalFat: number
+  totalCarbs: number
+  items: LoggedMealItem[]
+}
+
+export async function dayMeals(date: string): Promise<DayMealSummary[]> {
+  const h = await db()
+  const meals = await h.all<{ id: number; meal_slot: string; photo_uri: string | null; logged_at: number; portion_eaten_fraction: number }>(
+    `SELECT id, meal_slot, photo_uri, logged_at, portion_eaten_fraction
+     FROM meals WHERE local_date = ? AND analysis_status IN ('complete', 'manual')
+     ORDER BY logged_at DESC`,
+    [date],
+  )
+  if (meals.length === 0) return []
+
+  const mealIds = meals.map((m) => m.id)
+  const items = await h.all<{
+    id: number
+    meal_id: number
+    display_name: string
+    grams: number
+    snap_energy_kcal: number
+    snap_protein_g: number
+    snap_fat_g: number
+    snap_carb_g: number
+    logged_at: number
+  }>(
+    `SELECT id, meal_id, display_name, grams, snap_energy_kcal, snap_protein_g, snap_fat_g, snap_carb_g, logged_at
+     FROM log_items WHERE meal_id IN (${mealIds.join(',')})
+     ORDER BY sort_order ASC, id ASC`,
+  )
+
+  const itemsByMeal = new Map<number, LoggedMealItem[]>()
+  for (const it of items) {
+    const arr = itemsByMeal.get(it.meal_id) ?? []
+    arr.push({
+      id: it.id,
+      mealId: it.meal_id,
+      displayName: it.display_name,
+      grams: it.grams,
+      snapKcal: Math.round((it.snap_energy_kcal * it.grams) / 100),
+      snapProtein: Math.round((it.snap_protein_g * it.grams) / 100),
+      snapFat: Math.round((it.snap_fat_g * it.grams) / 100),
+      snapCarb: Math.round((it.snap_carb_g * it.grams) / 100),
+      loggedAt: it.logged_at,
+    })
+    itemsByMeal.set(it.meal_id, arr)
+  }
+
+  return meals.map((m) => {
+    const mealItems = itemsByMeal.get(m.id) ?? []
+    const frac = m.portion_eaten_fraction ?? 1
+    const totalKcal = Math.round(mealItems.reduce((acc, i) => acc + i.snapKcal, 0) * frac)
+    const totalProtein = Math.round(mealItems.reduce((acc, i) => acc + i.snapProtein, 0) * frac)
+    const totalFat = Math.round(mealItems.reduce((acc, i) => acc + i.snapFat, 0) * frac)
+    const totalCarbs = Math.round(mealItems.reduce((acc, i) => acc + i.snapCarb, 0) * frac)
+
+    return {
+      id: m.id,
+      mealSlot: m.meal_slot,
+      photoUri: m.photo_uri,
+      loggedAt: m.logged_at,
+      totalKcal,
+      totalProtein,
+      totalFat,
+      totalCarbs,
+      items: mealItems,
+    }
+  })
+}
+
+export async function deleteMeal(mealId: number): Promise<void> {
+  const h = await db()
+  await h.transaction(async (tx) => {
+    await tx.run('DELETE FROM log_items WHERE meal_id = ?', [mealId])
+    await tx.run('DELETE FROM meals WHERE id = ?', [mealId])
+  })
+}
+
