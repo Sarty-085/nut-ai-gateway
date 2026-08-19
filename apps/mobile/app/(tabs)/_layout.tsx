@@ -28,16 +28,17 @@ const TABS: ReadonlyArray<{ name: string; label: string; icon: IconName }> = [
 
 interface Action {
   label: string
+  subtitle: string
   icon: IconName
   route: string
 }
 
 const ACTIONS: Action[] = [
-  { label: 'Scan Body & Posture', icon: 'muscle', route: '/body-scan' },
-  { label: 'Scan Food', icon: 'scan', route: '/camera' },
-  { label: 'Log Weight', icon: 'scale', route: '/log-weight' },
-  { label: 'Log Exercise', icon: 'dumbbell', route: '/log-exercise' },
-  { label: 'Food Database', icon: 'search', route: '/food-search' },
+  { label: 'Scan Body & Posture', subtitle: 'Biomechanical alignment & corrective drills', icon: 'muscle', route: '/body-scan' },
+  { label: 'Scan Food', subtitle: 'Instant AI meal photo analysis', icon: 'scan', route: '/camera' },
+  { label: 'Log Weight', subtitle: 'Record weight & recalibrate targets', icon: 'scale', route: '/log-weight' },
+  { label: 'Log Exercise', subtitle: 'Track workout minutes & calories burned', icon: 'dumbbell', route: '/log-exercise' },
+  { label: 'Food Database', subtitle: 'Search USDA & Indian nutrition database', icon: 'search', route: '/food-search' },
 ]
 
 export default function TabLayout() {
@@ -89,37 +90,62 @@ export default function TabLayout() {
         ))}
       </Tabs>
 
-      <Modal visible={sheetOpen} transparent animationType="fade" onRequestClose={() => setSheetOpen(false)}>
-        <Pressable style={styles.backdrop} onPress={() => setSheetOpen(false)}>
-          <View style={[styles.grid, { paddingBottom: Math.max(insets.bottom, space.md) + 90 }]}>
-            {ACTIONS.map((a) => (
-              <Pressable
-                key={a.label}
-                accessibilityRole="button"
-                onPress={() => {
-                  setSheetOpen(false)
-                  router.push(a.route as never)
-                }}
-                style={[styles.action, { backgroundColor: theme.bgElevated }]}
-              >
-                <Icon name={a.icon} size={28} color={theme.text} />
-                <Text style={[type.bodyStrong, { color: theme.text, marginTop: space.sm }]}>{a.label}</Text>
-              </Pressable>
-            ))}
-          </View>
+      <Modal visible={sheetOpen} transparent animationType="slide" onRequestClose={() => setSheetOpen(false)}>
+        <View style={styles.backdrop}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setSheetOpen(false)} />
 
-          <View style={[styles.closeWrap, { paddingBottom: Math.max(insets.bottom, space.md) }]}>
-            <View style={{ flex: 1 }} />
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Close"
-              onPress={() => setSheetOpen(false)}
-              style={[styles.fab, { backgroundColor: theme.text }]}
-            >
-              <Icon name="close" size={22} color={theme.bg} weight={2.2} />
-            </Pressable>
+          <View
+            style={[
+              styles.bottomSheet,
+              {
+                backgroundColor: theme.isDark ? '#16161C' : theme.bgElevated,
+                borderColor: theme.border,
+                paddingBottom: Math.max(insets.bottom, 24),
+              },
+            ]}
+          >
+            {/* Drag handle */}
+            <View style={styles.handle} />
+
+            <View style={styles.sheetHeader}>
+              <Text style={[type.heading, { color: theme.text, fontSize: 18 }]}>Quick Actions</Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Close"
+                onPress={() => setSheetOpen(false)}
+                hitSlop={space.sm}
+                style={[styles.closeBtn, { backgroundColor: theme.bgSunken }]}
+              >
+                <Icon name="close" size={16} color={theme.textMuted} />
+              </Pressable>
+            </View>
+
+            <View style={styles.sheetList}>
+              {ACTIONS.map((a) => (
+                <Pressable
+                  key={a.label}
+                  accessibilityRole="button"
+                  onPress={() => {
+                    setSheetOpen(false)
+                    router.push(a.route as never)
+                  }}
+                  style={[styles.sheetItem, { backgroundColor: theme.isDark ? '#202028' : theme.bgSunken }]}
+                >
+                  <View style={[styles.itemIconWrap, { backgroundColor: theme.isDark ? '#16161C' : theme.bgElevated }]}>
+                    <Icon name={a.icon} size={22} color={theme.protein} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[type.bodyStrong, { color: theme.text, fontSize: 15 }]}>{a.label}</Text>
+                    <Text style={[type.caption, { color: theme.textMuted, fontSize: 12 }]} numberOfLines={1}>
+                      {a.subtitle}
+                    </Text>
+                  </View>
+                  <Icon name="chevron" size={16} color={theme.textFaint} />
+                </Pressable>
+              ))}
+            </View>
           </View>
-        </Pressable>
+        </View>
       </Modal>
     </>
   )
@@ -157,26 +183,56 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: space.md,
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    justifyContent: 'flex-end',
+  },
+  bottomSheet: {
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    borderWidth: 1,
+    borderBottomWidth: 0,
+    paddingTop: space.md,
     paddingHorizontal: space.lg,
   },
-  action: {
-    width: '47%',
-    aspectRatio: 1.35,
-    borderRadius: radius.lg,
+  handle: {
+    width: 38,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#3A3A48',
+    alignSelf: 'center',
+    marginBottom: space.sm,
+  },
+  sheetHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: space.md,
+  },
+  closeBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  closeWrap: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
+  sheetList: {
+    gap: space.sm,
+  },
+  sheetItem: {
     flexDirection: 'row',
-    paddingHorizontal: space.lg,
+    alignItems: 'center',
+    gap: space.md,
+    paddingVertical: 12,
+    paddingHorizontal: space.md,
+    borderRadius: 16,
+  },
+  itemIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 })

@@ -206,12 +206,18 @@ export default function Progress() {
           <View style={{ width: `${pctOfGoal * 100}%`, height: 6, borderRadius: 3, backgroundColor: theme.text }} />
         </View>
         <View style={styles.spread}>
-          <Text style={[type.caption, { color: theme.textMuted }]}>
-            Start: {startKg != null ? `${(startKg * LB_PER_KG).toFixed(1)} lbs` : '—'}
-          </Text>
-          <Text style={[type.caption, { color: theme.textMuted }]}>
-            Goal: {goalKg != null ? `${(goalKg * LB_PER_KG).toFixed(1)} lbs` : '—'}
-          </Text>
+          <Pressable onPress={() => router.push('/edit-goals' as never)} hitSlop={space.sm}>
+            <Text style={[type.caption, { color: theme.textMuted }]}>
+              Start: {startKg != null ? `${(startKg * LB_PER_KG).toFixed(1)} lbs` : '—'}{' '}
+              <Text style={{ color: theme.protein }}>✎</Text>
+            </Text>
+          </Pressable>
+          <Pressable onPress={() => router.push('/edit-goals' as never)} hitSlop={space.sm}>
+            <Text style={[type.caption, { color: theme.textMuted }]}>
+              Goal: {goalKg != null ? `${(goalKg * LB_PER_KG).toFixed(1)} lbs` : '—'}{' '}
+              <Text style={{ color: theme.protein }}>✎</Text>
+            </Text>
+          </Pressable>
         </View>
       </View>
 
@@ -223,7 +229,7 @@ export default function Progress() {
           </View>
         </View>
 
-        {raw.length === 0 ? (
+        {points.length === 0 ? (
           <Text style={[type.caption, { color: theme.textMuted, marginTop: space.md }]}>
             No weigh-ins yet. Log your first weight to begin tracking progress.
           </Text>
@@ -263,17 +269,20 @@ export default function Progress() {
           <Text style={[type.heading, { color: theme.text, marginBottom: space.sm }]}>Recorded Weigh-ins</Text>
           <View style={{ backgroundColor: theme.bgElevated, borderRadius: 12, padding: space.sm }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingBottom: 6, borderBottomWidth: 1, borderColor: theme.border }}>
-              <Text style={[type.caption, { color: theme.textMuted, fontWeight: '700' }]}>DATE</Text>
+              <Text style={[type.caption, { color: theme.textMuted, fontWeight: '700' }]}>DATE & TIME</Text>
               <Text style={[type.caption, { color: theme.textMuted, fontWeight: '700' }]}>WEIGHT</Text>
               <Text style={[type.caption, { color: theme.textMuted, fontWeight: '700' }]}>FROM START</Text>
             </View>
             {[...points].reverse().map((pt, idx) => {
               const dateStr = new Date(pt.day * 86_400_000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+              const timeStr = pt.loggedAt ? new Date(pt.loggedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''
               const lbs = pt.weightKg * LB_PER_KG
               const diffFromStart = startKg != null ? (pt.weightKg - startKg) * LB_PER_KG : 0
               return (
                 <View key={idx} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderBottomWidth: idx < points.length - 1 ? 1 : 0, borderColor: theme.border }}>
-                  <Text style={[type.body, { color: theme.text, fontSize: 13 }]}>{dateStr}</Text>
+                  <Text style={[type.body, { color: theme.text, fontSize: 12 }]}>
+                    {dateStr} {timeStr ? <Text style={{ color: theme.textMuted }}>{timeStr}</Text> : ''}
+                  </Text>
                   <Text style={[type.bodyStrong, { color: theme.text, fontSize: 13 }]}>{lbs.toFixed(1)} lbs</Text>
                   <Text style={[type.bodyStrong, { color: diffFromStart === 0 ? theme.textMuted : diffFromStart > 0 ? theme.fat : theme.affirm, fontSize: 13 }]}>
                     {diffFromStart > 0 ? `+${diffFromStart.toFixed(1)}` : diffFromStart.toFixed(1)} lbs
@@ -410,6 +419,34 @@ function WeightChart({ trend }: { trend: TrendPoint[] }) {
   const y = (kg: number) => H - 24 - ((kg - min + pad) / (span + pad * 2)) * (H - 48)
 
   const gridVals = [min + span, min + span / 2, min]
+
+  if (trend.length === 1) {
+    const singleKg = trend[0].trendKg
+    const cy = y(singleKg)
+    return (
+      <Svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} style={{ marginTop: space.md }}>
+        {gridVals.map((v, i) => (
+          <SvgLine key={i} x1={40} y1={y(v)} x2={W - 10} y2={y(v)} stroke={theme.border} strokeWidth="1" />
+        ))}
+        {gridVals.map((v, i) => (
+          <SvgText key={`t${i}`} x={2} y={y(v) + 4} fontSize="10" fill={theme.textFaint}>
+            {(v * LB_PER_KG).toFixed(0)}
+          </SvgText>
+        ))}
+        {/* Baseline guideline */}
+        <SvgLine x1={40} y1={cy} x2={W - 10} y2={cy} stroke={theme.protein} strokeWidth="2" strokeDasharray="4 4" opacity="0.6" />
+        {/* Outer Halo */}
+        <Circle cx={W / 2} cy={cy} r="10" stroke={theme.protein} strokeWidth="2" opacity="0.3" />
+        {/* Main Point */}
+        <Circle cx={W / 2} cy={cy} r="5" fill={theme.protein} />
+        {/* Label */}
+        <SvgText x={W / 2} y={cy - 12} fontSize="12" fontWeight="700" fill={theme.text} textAnchor="middle">
+          {(singleKg * LB_PER_KG).toFixed(1)} lbs
+        </SvgText>
+      </Svg>
+    )
+  }
+
   let d = ''
   trend.forEach((p, i) => {
     d += `${i === 0 ? 'M' : 'L'} ${x(i)} ${y(p.trendKg)} `
@@ -426,7 +463,7 @@ function WeightChart({ trend }: { trend: TrendPoint[] }) {
         </SvgText>
       ))}
       {trend.map((p, i) =>
-        p.rawKg != null ? <Circle key={i} cx={x(i)} cy={y(p.rawKg)} r="3" fill={theme.textFaint} /> : null,
+        p.rawKg != null ? <Circle key={i} cx={x(i)} cy={y(p.rawKg)} r="3.5" fill={theme.textFaint} /> : null,
       )}
       <Path d={d} stroke={theme.text} strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
     </Svg>

@@ -239,6 +239,8 @@ export interface WeightPoint {
   /** Integer day index — days since epoch, or any consistent scheme. */
   day: number
   weightKg: number
+  loggedAt?: number
+  id?: number
 }
 
 export interface TrendPoint {

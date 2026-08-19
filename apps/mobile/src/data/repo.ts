@@ -4,7 +4,6 @@ import {
   computeMacros,
   computeTrend,
   isDayCompleteEnough,
-  LB_PER_KG,
   trendSlopeLbPerWeek,
   updateAdaptiveTdee,
   type Goal,
@@ -78,6 +77,7 @@ export async function resetEverything(): Promise<void> {
 
 export interface CurrentGoal {
   goalType: Goal
+  rateLbPerWeek?: number | null
   targetKcal: number
   targetRawKcal: number
   floorApplied: boolean
@@ -102,6 +102,7 @@ export async function currentGoal(): Promise<CurrentGoal | null> {
   const h = await db()
   const row = await h.get<{
     goal_type: string
+    rate_lb_per_week: number | null
     target_kcal: number
     target_raw_kcal: number
     floor_applied: number
@@ -117,6 +118,7 @@ export async function currentGoal(): Promise<CurrentGoal | null> {
   if (!row) return null
   return {
     goalType: row.goal_type as Goal,
+    rateLbPerWeek: row.rate_lb_per_week,
     targetKcal: row.target_kcal,
     targetRawKcal: row.target_raw_kcal,
     floorApplied: row.floor_applied === 1,
@@ -340,9 +342,15 @@ export async function logWeight(kg: number, now: number): Promise<void> {
   const h = await db()
   const dateStr = localDate(now)
   await h.run(
-    'INSERT OR REPLACE INTO weight_entries (local_date, weight_kg, logged_at) VALUES (?,?,?)',
+    'INSERT INTO weight_entries (local_date, weight_kg, logged_at) VALUES (?,?,?)',
     [dateStr, kg, now],
   )
+
+  // Ensure start weight is permanently anchored if not yet written
+  const startStr = await setting('goal.startWeightKg', '')
+  if (!startStr) {
+    await putSetting('goal.startWeightKg', String(kg))
+  }
 
   // Recompute calorie target and macros for new weight
   try {
@@ -357,9 +365,14 @@ export async function logWeight(kg: number, now: number): Promise<void> {
       const birthYear = profile.birth_year || 1995
       const age = Math.max(16, new Date().getFullYear() - birthYear)
       const targetKg = desiredStr ? Number(desiredStr) : kg
-      const goalType: Goal = targetKg < kg - 0.5 ? 'lose' : targetKg > kg + 0.5 ? 'gain' : 'maintain'
-      const deltaLb = Math.abs((targetKg - kg) * LB_PER_KG)
-      const rate = goalType === 'maintain' ? 0 : Math.min(1.5, Math.max(0.5, deltaLb / 12))
+
+      // Preserve user's goal type (lose, maintain, gain)
+      const goalType: Goal =
+        currentG.goalType === 'maintain' && Math.abs(targetKg - kg) > 1
+          ? (targetKg < kg ? 'lose' : 'gain')
+          : currentG.goalType
+
+      const rate = currentG.rateLbPerWeek || 1.0
 
       const target = computeCalorieTarget({
         sex: profile.sex || 'unspecified',
@@ -398,14 +411,16 @@ export async function logWeight(kg: number, now: number): Promise<void> {
   }
 }
 
-export async function weightHistory(): Promise<WeightPoint[]> {
+export async function weightHistory(): Promise<Array<WeightPoint & { id?: number; loggedAt?: number }>> {
   const h = await db()
-  const rows = await h.all<{ local_date: string; weight_kg: number }>(
-    'SELECT local_date, weight_kg FROM weight_entries ORDER BY local_date ASC',
+  const rows = await h.all<{ id: number; local_date: string; weight_kg: number; logged_at: number }>(
+    'SELECT id, local_date, weight_kg, logged_at FROM weight_entries ORDER BY logged_at ASC, id ASC',
   )
   return rows.map((r) => ({
+    id: r.id,
     day: Math.floor(Date.parse(`${r.local_date}T00:00:00Z`) / 86_400_000),
     weightKg: r.weight_kg,
+    loggedAt: r.logged_at,
   }))
 }
 

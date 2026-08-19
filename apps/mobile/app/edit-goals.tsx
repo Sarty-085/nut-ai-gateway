@@ -3,23 +3,13 @@ import { useEffect, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { reconcileFromMacros } from '@nutai/totals'
-import { currentGoal, overrideTargets, type CurrentGoal } from '../src/data/repo'
+import { currentGoal, overrideTargets, putSetting, setting, type CurrentGoal } from '../src/data/repo'
+import { LB_PER_KG, lbToKg } from '../src/onboarding/store'
 import { useTheme } from '../src/theme/ThemeProvider'
 import { radius, space, type } from '../src/theme/tokens'
 
 /**
- * Edit nutrition goals.
- *
- * Two rules carried over from the engine, because a settings screen that breaks
- * them re-introduces the exact bug the engine was built to prevent:
- *
- *   CARBS ARE THE DERIVED VARIABLE. Editing calories, protein or fat re-solves
- *   carbs as the remainder. There is always exactly one dependent value, so the
- *   four numbers can never drift out of agreement.
- *
- *   SAVING TURNS THE ADAPTIVE LOOP OFF. Silently overwriting a target someone
- *   deliberately typed is the fastest way to lose their trust in every other
- *   number in the app.
+ * Edit nutrition and body weight goals.
  */
 export default function EditGoals() {
   const theme = useTheme()
@@ -29,17 +19,32 @@ export default function EditGoals() {
   const [kcal, setKcal] = useState('')
   const [protein, setProtein] = useState('')
   const [fat, setFat] = useState('')
+  const [startLbs, setStartLbs] = useState('')
+  const [goalLbs, setGoalLbs] = useState('')
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     let alive = true
-    void currentGoal().then((g) => {
-      if (!alive || !g) return
-      setBase(g)
-      setKcal(String(Math.round(g.targetKcal)))
-      setProtein(String(Math.round(g.protein_g)))
-      setFat(String(Math.round(g.fat_g)))
-    })
+    void (async () => {
+      const [g, startW, desiredW] = await Promise.all([
+        currentGoal(),
+        setting('goal.startWeightKg', ''),
+        setting('goal.desiredWeightKg', ''),
+      ])
+      if (!alive) return
+      if (g) {
+        setBase(g)
+        setKcal(String(Math.round(g.targetKcal)))
+        setProtein(String(Math.round(g.protein_g)))
+        setFat(String(Math.round(g.fat_g)))
+      }
+      if (startW) {
+        setStartLbs((Number(startW) * LB_PER_KG).toFixed(1))
+      }
+      if (desiredW) {
+        setGoalLbs((Number(desiredW) * LB_PER_KG).toFixed(1))
+      }
+    })()
     return () => {
       alive = false
     }
@@ -60,6 +65,14 @@ export default function EditGoals() {
   async function save() {
     if (!base || saving || kcalV <= 0 || impossible) return
     setSaving(true)
+
+    if (startLbs && Number(startLbs) > 0) {
+      await putSetting('goal.startWeightKg', String(lbToKg(Number(startLbs))))
+    }
+    if (goalLbs && Number(goalLbs) > 0) {
+      await putSetting('goal.desiredWeightKg', String(lbToKg(Number(goalLbs))))
+    }
+
     await overrideTargets(
       {
         targetKcal: kcalV,
@@ -74,14 +87,19 @@ export default function EditGoals() {
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg, paddingTop: insets.top + space.lg }}>
       <View style={styles.head}>
-        <Text style={[type.title, { color: theme.text }]}>Nutrition goals</Text>
+        <Text style={[type.title, { color: theme.text }]}>Goals & Targets</Text>
         <Pressable onPress={() => router.back()} hitSlop={space.md}>
           <Text style={[type.body, { color: theme.textMuted }]}>Cancel</Text>
         </Pressable>
       </View>
 
       <ScrollView contentContainerStyle={{ padding: space.lg, paddingBottom: 140 }}>
-        <Field label="Calories" unit="kcal" value={kcal} onChange={setKcal} />
+        <Text style={[type.heading, { color: theme.text, fontSize: 17, marginBottom: space.md }]}>Weight Targets</Text>
+        <Field label="Start Baseline Weight" unit="lbs" value={startLbs} onChange={setStartLbs} />
+        <Field label="Target Goal Weight" unit="lbs" value={goalLbs} onChange={setGoalLbs} />
+
+        <Text style={[type.heading, { color: theme.text, fontSize: 17, marginTop: space.md, marginBottom: space.md }]}>Nutrition Daily Targets</Text>
+        <Field label="Daily Calorie Target" unit="kcal" value={kcal} onChange={setKcal} />
         <Field label="Protein" unit="g" value={protein} onChange={setProtein} />
         <Field label="Fat" unit="g" value={fat} onChange={setFat} />
 
@@ -91,8 +109,7 @@ export default function EditGoals() {
             <Text style={[styles.big, { color: theme.text }]}>{Math.round(carbsV)} g</Text>
           </View>
           <Text style={[type.caption, { color: theme.textMuted, marginTop: space.xs, lineHeight: 18 }]}>
-            Carbs are always the remainder, so your four numbers can never disagree with each other.
-            Change calories, protein or fat and this re-solves.
+            Carbs are automatically calculated as the remainder from calories, protein, and fat.
           </Text>
         </View>
 
@@ -105,13 +122,6 @@ export default function EditGoals() {
             </Text>
           </View>
         ) : null}
-
-        <View style={[styles.note, { backgroundColor: theme.uncertainBg }]}>
-          <Text style={[type.caption, { color: theme.text, lineHeight: 18 }]}>
-            Saving switches OFF the adaptive target. We will not quietly overwrite a number you
-            chose on purpose — you can turn adaptation back on by regenerating your plan.
-          </Text>
-        </View>
       </ScrollView>
 
       <View style={[styles.dock, { paddingBottom: Math.max(insets.bottom, space.lg), backgroundColor: theme.bg }]}>
@@ -120,7 +130,7 @@ export default function EditGoals() {
           disabled={kcalV <= 0 || impossible || saving}
           style={[styles.cta, { backgroundColor: kcalV > 0 && !impossible ? theme.text : theme.border }]}
         >
-          <Text style={[type.bodyStrong, { color: theme.bg, fontSize: 18 }]}>Save</Text>
+          <Text style={[type.bodyStrong, { color: theme.bg, fontSize: 18 }]}>Save Goals</Text>
         </Pressable>
       </View>
     </View>

@@ -441,8 +441,23 @@ CREATE TABLE IF NOT EXISTS body_scans (
 CREATE INDEX IF NOT EXISTS idx_body_scans_date ON body_scans(local_date);
 `
 
+const MIGRATION_3_SQL = `
+CREATE TABLE IF NOT EXISTS weight_entries_new (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  local_date TEXT NOT NULL,
+  weight_kg  REAL NOT NULL,
+  logged_at  INTEGER NOT NULL
+);
+INSERT OR IGNORE INTO weight_entries_new (id, local_date, weight_kg, logged_at)
+  SELECT id, local_date, weight_kg, logged_at FROM weight_entries;
+DROP TABLE IF EXISTS weight_entries;
+ALTER TABLE weight_entries_new RENAME TO weight_entries;
+CREATE INDEX IF NOT EXISTS idx_weight_entries_date ON weight_entries(local_date);
+CREATE INDEX IF NOT EXISTS idx_weight_entries_logged ON weight_entries(logged_at);
+`
+
 /** Current user-schema version. Bump with every migration added below. */
-export const USER_SCHEMA_VERSION = 2
+export const USER_SCHEMA_VERSION = 3
 
 export interface Migration {
   version: number
@@ -459,4 +474,5 @@ export interface Migration {
 export const MIGRATIONS: readonly Migration[] = [
   { version: 1, sql: USER_SCHEMA },
   { version: 2, sql: MIGRATION_2_SQL },
+  { version: 3, sql: MIGRATION_3_SQL },
 ]

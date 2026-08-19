@@ -15,7 +15,7 @@ export default function DesiredWeightScreen() {
   const { width } = useWindowDimensions()
   const a = useAnswers()
 
-  const currentKg = a.weightKg ?? 88.4
+  const currentKg = a.weightKg ?? (a.units === 'imperial' ? 68 : 65)
   // Defaults to the CURRENT weight, i.e. "maintain", so the direction is
   // something the user chooses by moving, not something we assumed for them.
   const kg = a.desiredWeightKg ?? currentKg

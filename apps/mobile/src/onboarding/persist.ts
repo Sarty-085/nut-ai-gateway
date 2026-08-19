@@ -87,6 +87,7 @@ export async function persistOnboarding(
     // for it should be deleted, not the row.
     const settings: Array<[string, string]> = [
       ['diet.style', answers.dietStyle ?? 'balanced'],
+      ['goal.startWeightKg', String(answers.weightKg ?? '')],
       ['goal.desiredWeightKg', String(answers.desiredWeightKg ?? answers.weightKg ?? '')],
       ['goal.blocker', answers.blocker ?? ''],
       ['goal.accomplish', answers.accomplish ?? ''],
