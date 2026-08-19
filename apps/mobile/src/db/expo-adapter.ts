@@ -14,19 +14,23 @@ import * as SQLite from 'expo-sqlite'
  * interface, which is what makes "it worked in the harness" mean something on
  * device.
  */
+function cleanParams(params: readonly SqlValue[] = []): SQLite.SQLiteBindValue[] {
+  return params.map((p) => (p === undefined ? null : p)) as SQLite.SQLiteBindValue[]
+}
+
 class ExpoDbAdapter implements DbAdapter {
   constructor(private readonly db: SQLite.SQLiteDatabase) {}
 
   async all<T = Record<string, SqlValue>>(sql: string, params: readonly SqlValue[] = []): Promise<T[]> {
-    return (await this.db.getAllAsync(sql, params as SQLite.SQLiteBindValue[])) as T[]
+    return (await this.db.getAllAsync(sql, cleanParams(params))) as T[]
   }
 
   async get<T = Record<string, SqlValue>>(sql: string, params: readonly SqlValue[] = []): Promise<T | null> {
-    return ((await this.db.getFirstAsync(sql, params as SQLite.SQLiteBindValue[])) as T | null) ?? null
+    return ((await this.db.getFirstAsync(sql, cleanParams(params))) as T | null) ?? null
   }
 
   async run(sql: string, params: readonly SqlValue[] = []): Promise<RunResult> {
-    const r = await this.db.runAsync(sql, params as SQLite.SQLiteBindValue[])
+    const r = await this.db.runAsync(sql, cleanParams(params))
     return { changes: r.changes, lastInsertRowId: r.lastInsertRowId }
   }
 

@@ -16,7 +16,7 @@ import {
   View,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import Svg, { Circle, Line, Path, Rect, Text as SvgText } from 'react-native-svg'
+import Svg, { Circle, Line, Path, Rect, Text as SvgText, G } from 'react-native-svg'
 import { Icon } from '../src/components/Icon'
 import { saveBodyScan } from '../src/data/repo'
 import { runBodyScan } from '../src/inference/pathA/client'
@@ -36,6 +36,28 @@ interface SelectedExercisePreview {
   type: 'corrective' | 'mobility'
 }
 
+type ExerciseCategory = 'neck' | 'shoulders' | 'spine' | 'core' | 'hips' | 'general'
+
+function getExerciseCategory(name: string, targetArea: string): ExerciseCategory {
+  const text = `${name} ${targetArea}`.toLowerCase()
+  if (text.includes('chin') || text.includes('neck') || text.includes('cervical') || text.includes('trap')) {
+    return 'neck'
+  }
+  if (text.includes('pull') || text.includes('shoulder') || text.includes('wall angel') || text.includes('scapula') || text.includes('chest') || text.includes('pec')) {
+    return 'shoulders'
+  }
+  if (text.includes('cat') || text.includes('spine') || text.includes('thoracic') || text.includes('thread') || text.includes('cobra') || text.includes('back')) {
+    return 'spine'
+  }
+  if (text.includes('deadbug') || text.includes('bird') || text.includes('core') || text.includes('plank') || text.includes('bridge') || text.includes('pelvi')) {
+    return 'core'
+  }
+  if (text.includes('hip') || text.includes('pigeon') || text.includes('lunge') || text.includes('glute') || text.includes('hamstring') || text.includes('squat')) {
+    return 'hips'
+  }
+  return 'general'
+}
+
 export default function BodyScanScreen() {
   const theme = useTheme()
   const insets = useSafeAreaInsets()
@@ -52,6 +74,7 @@ export default function BodyScanScreen() {
   const [analysisStep, setAnalysisStep] = useState(0)
   const [saving, setSaving] = useState(false)
   const [selectedPreview, setSelectedPreview] = useState<SelectedExercisePreview | null>(null)
+  const [movementPhase, setMovementPhase] = useState<'start' | 'peak'>('peak')
   const [drillTimerActive, setDrillTimerActive] = useState(false)
   const [drillSecondsLeft, setDrillSecondsLeft] = useState(30)
 
@@ -215,6 +238,7 @@ export default function BodyScanScreen() {
       cue: item.cue,
       type,
     })
+    setMovementPhase('peak')
     setDrillSecondsLeft(30)
     setDrillTimerActive(false)
   }
@@ -655,27 +679,33 @@ export default function BodyScanScreen() {
                   </Pressable>
                 </View>
 
-                {/* Biomechanical Visual Diagram */}
+                {/* Interactive Movement Phase Switcher */}
+                <View style={styles.phaseSelector}>
+                  <Pressable
+                    onPress={() => setMovementPhase('start')}
+                    style={[styles.phaseBtn, movementPhase === 'start' && styles.phaseBtnActive]}
+                  >
+                    <Text style={[styles.phaseBtnText, movementPhase === 'start' && styles.phaseBtnTextActive]}>
+                      1. Starting Setup
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => setMovementPhase('peak')}
+                    style={[styles.phaseBtn, movementPhase === 'peak' && styles.phaseBtnActive]}
+                  >
+                    <Text style={[styles.phaseBtnText, movementPhase === 'peak' && styles.phaseBtnTextActive]}>
+                      2. Peak Contraction / Stretch
+                    </Text>
+                  </Pressable>
+                </View>
+
+                {/* Anatomical Biomechanical Visualizer */}
                 <View style={styles.diagramContainer}>
-                  <Svg width="100%" height={140} viewBox="0 0 300 140">
-                    <Rect width="300" height="140" fill="#0B0B0F" rx={12} stroke="#22222B" strokeWidth={1} />
-                    {/* Grid lines */}
-                    <Line x1="20" y1="70" x2="280" y2="70" stroke="#16161C" strokeWidth="1" strokeDasharray="4 4" />
-                    <Line x1="150" y1="15" x2="150" y2="125" stroke="#16161C" strokeWidth="1" strokeDasharray="4 4" />
-
-                    {/* Stylized Movement Vector */}
-                    <Circle cx="150" cy="40" r="14" fill="#16161C" stroke={theme.protein} strokeWidth="2.5" />
-                    <Line x1="150" y1="54" x2="150" y2="95" stroke={theme.protein} strokeWidth="3" strokeLinecap="round" />
-                    <Line x1="120" y1="65" x2="180" y2="65" stroke={theme.protein} strokeWidth="3" strokeLinecap="round" />
-                    <Line x1="150" y1="95" x2="130" y2="125" stroke={theme.protein} strokeWidth="2.5" strokeLinecap="round" />
-                    <Line x1="150" y1="95" x2="170" y2="125" stroke={theme.protein} strokeWidth="2.5" strokeLinecap="round" />
-
-                    {/* Biomechanical Cue Arrow */}
-                    <Path d="M 190 55 Q 210 65 215 80" stroke={theme.affirm} strokeWidth="2" fill="none" strokeDasharray="3 3" />
-                    <SvgText x="150" y="132" fill="#8A8A99" fontSize="10" fontWeight="600" textAnchor="middle">
-                      {selectedPreview.target_area.toUpperCase()}
-                    </SvgText>
-                  </Svg>
+                  <ExerciseVisualizer
+                    category={getExerciseCategory(selectedPreview.name, selectedPreview.target_area)}
+                    phase={movementPhase}
+                    theme={theme}
+                  />
                 </View>
 
                 {/* Step by Step Execution Instructions */}
@@ -683,7 +713,7 @@ export default function BodyScanScreen() {
                   <View style={styles.instructionStep}>
                     <Text style={styles.stepNum}>1</Text>
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.stepHeading}>Target Biomechanics</Text>
+                      <Text style={styles.stepHeading}>Target Biomechanics & Focus</Text>
                       <Text style={styles.stepBody}>{selectedPreview.target_area}</Text>
                     </View>
                   </View>
@@ -691,7 +721,7 @@ export default function BodyScanScreen() {
                   <View style={styles.instructionStep}>
                     <Text style={styles.stepNum}>2</Text>
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.stepHeading}>Key Form Cue</Text>
+                      <Text style={styles.stepHeading}>Movement Execution</Text>
                       <Text style={styles.stepBody}>{selectedPreview.cue}</Text>
                     </View>
                   </View>
@@ -699,9 +729,9 @@ export default function BodyScanScreen() {
                   <View style={styles.instructionStep}>
                     <Text style={styles.stepNum}>3</Text>
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.stepHeading}>Prescription & Cadence</Text>
+                      <Text style={styles.stepHeading}>Cadence & Tempo</Text>
                       <Text style={styles.stepBody}>
-                        Perform {selectedPreview.sets_reps || selectedPreview.duration} with controlled, deliberate cadence. Focus on muscle contraction over speed.
+                        Perform {selectedPreview.sets_reps || selectedPreview.duration} with 2s hold at peak position. Inhale on reset, exhale on contraction.
                       </Text>
                     </View>
                   </View>
@@ -731,6 +761,150 @@ export default function BodyScanScreen() {
         </View>
       </Modal>
     </View>
+  )
+}
+
+/**
+ * High-fidelity Anatomical & Biomechanical SVG Visualizer for exercises.
+ */
+function ExerciseVisualizer({
+  category,
+  phase,
+  theme,
+}: {
+  category: ExerciseCategory
+  phase: 'start' | 'peak'
+  theme: any
+}) {
+  const isPeak = phase === 'peak'
+  const W = 320
+  const H = 150
+
+  return (
+    <Svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`}>
+      <Rect width={W} height={H} fill="#0B0B0F" rx={14} stroke="#22222B" strokeWidth={1} />
+      <Line x1="20" y1={H / 2} x2={W - 20} y2={H / 2} stroke="#16161C" strokeWidth={1} strokeDasharray="4 4" />
+      <Line x1={W / 2} y1="15" x2={W / 2} y2={H - 15} stroke="#16161C" strokeWidth={1} strokeDasharray="4 4" />
+
+      {category === 'neck' && (
+        <G>
+          {/* Head & Cervical Spine Vector */}
+          <Circle cx={isPeak ? 150 : 165} cy={45} r={18} fill="#16161C" stroke={theme.protein} strokeWidth={2.5} />
+          {/* Torso */}
+          <Line x1="150" y1="65" x2="150" y2="120" stroke="#33333F" strokeWidth={5} strokeLinecap="round" />
+          {/* Cervical Alignment Arrow */}
+          <Path
+            d={isPeak ? "M 175 45 L 155 45" : "M 155 45 L 175 45"}
+            stroke={theme.affirm}
+            strokeWidth={3}
+            fill="none"
+            markerEnd="arrow"
+          />
+          <SvgText x={W / 2} y={H - 14} fill={theme.protein} fontSize="11" fontWeight="700" textAnchor="middle">
+            {isPeak ? "DEEP CERVICAL RETRACTION (DOUBLE CHIN)" : "STARTING RELAXED FORWARD ALIGNMENT"}
+          </SvgText>
+        </G>
+      )}
+
+      {category === 'shoulders' && (
+        <G>
+          {/* Torso & Arms for Face Pulls / Wall Angels */}
+          <Circle cx={160} cy={35} r={14} fill="#16161C" stroke={theme.protein} strokeWidth={2.5} />
+          <Line x1="160" y1="50" x2="160" y2="115" stroke="#33333F" strokeWidth={5} strokeLinecap="round" />
+          {/* Left & Right Arms */}
+          <Line
+            x1="160"
+            y1="60"
+            x2={isPeak ? 115 : 140}
+            y2={isPeak ? 45 : 85}
+            stroke={theme.protein}
+            strokeWidth={3.5}
+            strokeLinecap="round"
+          />
+          <Line
+            x1="160"
+            y1="60"
+            x2={isPeak ? 205 : 180}
+            y2={isPeak ? 45 : 85}
+            stroke={theme.protein}
+            strokeWidth={3.5}
+            strokeLinecap="round"
+          />
+          {/* Scapular Retraction Target Highlight */}
+          <Rect x={145} y={60} width={30} height={25} rx={4} fill={theme.protein} opacity={isPeak ? 0.35 : 0.1} />
+          <SvgText x={W / 2} y={H - 14} fill={theme.protein} fontSize="11" fontWeight="700" textAnchor="middle">
+            {isPeak ? "PEAK SCAPULAR RETRACTION & EXTERNAL ROTATION" : "STARTING EXTENSION AT EYE LEVEL"}
+          </SvgText>
+        </G>
+      )}
+
+      {category === 'spine' && (
+        <G>
+          {/* Cat-Cow / Thoracic Arc */}
+          <Circle cx={isPeak ? 110 : 110} cy={isPeak ? 50 : 70} r={12} fill="#16161C" stroke={theme.protein} strokeWidth={2.5} />
+          {/* Spinal Curve */}
+          <Path
+            d={isPeak ? "M 115 55 Q 160 30 210 65" : "M 115 70 Q 160 95 210 65"}
+            stroke={theme.protein}
+            strokeWidth={4}
+            fill="none"
+          />
+          {/* Limbs on quadruped */}
+          <Line x1="125" y1="75" x2="125" y2="115" stroke="#33333F" strokeWidth={4} strokeLinecap="round" />
+          <Line x1="205" y1="75" x2="205" y2="115" stroke="#33333F" strokeWidth={4} strokeLinecap="round" />
+          <SvgText x={W / 2} y={H - 14} fill={theme.protein} fontSize="11" fontWeight="700" textAnchor="middle">
+            {isPeak ? "THORACIC EXTENSION & CHEST EXPANSION" : "VERTEBRAL FLEXION & ABDOMINAL ENGAGEMENT"}
+          </SvgText>
+        </G>
+      )}
+
+      {category === 'core' && (
+        <G>
+          {/* Deadbug / Glute Bridge / Plank */}
+          <Line x1="100" y1="85" x2="220" y2="85" stroke="#33333F" strokeWidth={5} strokeLinecap="round" />
+          <Circle cx={100} cy={75} r={12} fill="#16161C" stroke={theme.protein} strokeWidth={2.5} />
+          {/* Hip Extension / Core Elevation */}
+          <Path
+            d={isPeak ? "M 100 85 Q 160 55 210 85" : "M 100 85 L 210 85"}
+            stroke={theme.affirm}
+            strokeWidth={4}
+            fill="none"
+          />
+          <SvgText x={W / 2} y={H - 14} fill={theme.affirm} fontSize="11" fontWeight="700" textAnchor="middle">
+            {isPeak ? "GLUTE ACTIVATION & PELVIC NEUTRAL LOCK" : "FLAT LUMBAR BASELINE & BRACED CORE"}
+          </SvgText>
+        </G>
+      )}
+
+      {category === 'hips' && (
+        <G>
+          {/* Hip Flexor Lunge / 90-90 */}
+          <Circle cx={140} cy={35} r={13} fill="#16161C" stroke={theme.protein} strokeWidth={2.5} />
+          <Line x1="140" y1="48" x2="145" y2="85" stroke="#33333F" strokeWidth={4.5} strokeLinecap="round" />
+          {/* Forward Lunge Leg */}
+          <Line x1="145" y1="85" x2="110" y2="90" stroke={theme.protein} strokeWidth={3.5} strokeLinecap="round" />
+          <Line x1="110" y1="90" x2="110" y2="120" stroke={theme.protein} strokeWidth={3.5} strokeLinecap="round" />
+          {/* Rear Stretched Leg */}
+          <Line x1="145" y1="85" x2={isPeak ? 195 : 175} y2={120} stroke={theme.affirm} strokeWidth={3.5} strokeLinecap="round" />
+          <SvgText x={W / 2} y={H - 14} fill={theme.affirm} fontSize="11" fontWeight="700" textAnchor="middle">
+            {isPeak ? "DEEP PSOAS & HIP FLEXOR ELONGATION" : "UPRIGHT PELVIC STACK & SQUARED HIPS"}
+          </SvgText>
+        </G>
+      )}
+
+      {category === 'general' && (
+        <G>
+          <Circle cx={160} cy={40} r={14} fill="#16161C" stroke={theme.protein} strokeWidth={2.5} />
+          <Line x1="160" y1="54" x2="160" y2="105" stroke={theme.protein} strokeWidth={3.5} strokeLinecap="round" />
+          <Line x1="125" y1="65" x2="195" y2="65" stroke={theme.protein} strokeWidth={3.5} strokeLinecap="round" />
+          <Line x1="160" y1="105" x2="135" y2="130" stroke={theme.protein} strokeWidth={3} strokeLinecap="round" />
+          <Line x1="160" y1="105" x2="185" y2="130" stroke={theme.protein} strokeWidth={3} strokeLinecap="round" />
+          <SvgText x={W / 2} y={H - 14} fill={theme.protein} fontSize="11" fontWeight="700" textAnchor="middle">
+            {isPeak ? "ACTIVE RANGE OF MOTION CONTRACTION" : "CONTROLLED STARTING STANCE"}
+          </SvgText>
+        </G>
+      )}
+    </Svg>
   )
 }
 
@@ -1208,13 +1382,13 @@ const styles = StyleSheet.create({
     padding: space.lg,
     borderWidth: 1,
     borderColor: '#22222B',
-    maxHeight: '85%',
+    maxHeight: '88%',
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: space.sm,
+    marginBottom: space.xs,
   },
   modalBadgeRow: {
     flexDirection: 'row',
@@ -1240,11 +1414,38 @@ const styles = StyleSheet.create({
   modalCloseBtn: {
     padding: space.xs,
   },
+  phaseSelector: {
+    flexDirection: 'row',
+    backgroundColor: '#0B0B0F',
+    borderRadius: 10,
+    padding: 3,
+    marginVertical: space.xs,
+    borderWidth: 1,
+    borderColor: '#22222B',
+  },
+  phaseBtn: {
+    flex: 1,
+    paddingVertical: 6,
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  phaseBtnActive: {
+    backgroundColor: '#22222B',
+  },
+  phaseBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#8A8A99',
+  },
+  phaseBtnTextActive: {
+    color: '#F7F7FA',
+    fontWeight: '700',
+  },
   diagramContainer: {
-    marginVertical: space.sm,
+    marginVertical: space.xs,
   },
   modalInstructionScroll: {
-    maxHeight: 160,
+    maxHeight: 140,
     marginVertical: space.xs,
   },
   instructionStep: {
@@ -1282,7 +1483,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#0B0B0F',
     borderRadius: 12,
     padding: space.md,
-    marginTop: space.sm,
+    marginTop: space.xs,
     borderWidth: 1,
     borderColor: '#22222B',
   },
@@ -1312,7 +1513,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 12,
     alignItems: 'center',
-    marginTop: space.md,
+    marginTop: space.sm,
   },
   modalDoneText: {
     color: '#F7F7FA',

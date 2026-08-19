@@ -566,3 +566,53 @@ export async function deleteBodyScan(id: number): Promise<void> {
   await h.run('DELETE FROM body_scans WHERE id = ?', [id])
 }
 
+// ---------------------------------------------------------------------------
+// Water, Exercise & Activity Tracking
+// ---------------------------------------------------------------------------
+
+export async function logWater(amountMl: number, now: number = Date.now()): Promise<void> {
+  const h = await db()
+  const date = localDate(now)
+  await h.run('INSERT INTO water_entries (local_date, amount_ml, logged_at) VALUES (?,?,?)', [
+    date,
+    amountMl,
+    now,
+  ])
+}
+
+export async function dayWaterMl(date: string): Promise<number> {
+  const h = await db()
+  const row = await h.get<{ total: number }>(
+    'SELECT COALESCE(SUM(amount_ml), 0) as total FROM water_entries WHERE local_date = ?',
+    [date],
+  )
+  return row?.total ?? 0
+}
+
+export async function dayExerciseKcal(date: string): Promise<number> {
+  const h = await db()
+  const row = await h.get<{ total: number }>(
+    'SELECT COALESCE(SUM(kcal), 0) as total FROM exercise_entries WHERE local_date = ?',
+    [date],
+  )
+  return Math.round(row?.total ?? 0)
+}
+
+export async function activeDays(): Promise<string[]> {
+  const h = await db()
+  const rows = await h.all<{ local_date: string }>(
+    `SELECT DISTINCT local_date FROM (
+       SELECT local_date FROM meals
+       UNION
+       SELECT local_date FROM weight_entries
+       UNION
+       SELECT local_date FROM water_entries
+       UNION
+       SELECT local_date FROM exercise_entries
+       UNION
+       SELECT local_date FROM body_scans
+     ) ORDER BY local_date DESC`,
+  )
+  return rows.map((r) => r.local_date)
+}
+

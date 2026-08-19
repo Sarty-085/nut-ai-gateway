@@ -4,7 +4,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Svg, { Circle, Line as SvgLine, Path, Rect, Text as SvgText } from 'react-native-svg'
 import { bmi, computeTrend, trendSlopeLbPerWeek, type TrendPoint, type WeightPoint } from '@nutai/goals'
-import { currentGoal, db, getLatestBodyScan, setting, weightHistory, type CurrentGoal, type SavedBodyScanRow } from '../../src/data/repo'
+import { activeDays, currentGoal, db, getLatestBodyScan, setting, weightHistory, type CurrentGoal, type SavedBodyScanRow } from '../../src/data/repo'
 import { Icon } from '../../src/components/Icon'
 import { useTheme } from '../../src/theme/ThemeProvider'
 import { radius, space, type } from '../../src/theme/tokens'
@@ -26,7 +26,7 @@ export default function Progress() {
 
   const [points, setPoints] = useState<WeightPoint[]>([])
   const [goal, setGoal] = useState<CurrentGoal | null>(null)
-  const [heightCm, setHeightCm] = useState<number | null>(null)
+  const [heightCm, setHeightCm] = useState<number>(175)
   const [goalKg, setGoalKg] = useState<number | null>(null)
   const [streak, setStreak] = useState(0)
   const [window, setWindow] = useState<(typeof WINDOWS)[number]['key']>('90D')
@@ -37,20 +37,20 @@ export default function Progress() {
       let alive = true
       void (async () => {
         const h = await db()
-        const [pts, g, target, profile, days, scan] = await Promise.all([
+        const [pts, g, target, profile, allDays, scan] = await Promise.all([
           weightHistory(),
           currentGoal(),
           setting('goal.desiredWeightKg', ''),
           h.get<{ height_cm: number }>('SELECT height_cm FROM user_profile WHERE id = 1'),
-          h.all<{ local_date: string }>('SELECT DISTINCT local_date FROM meals ORDER BY local_date DESC'),
+          activeDays(),
           getLatestBodyScan(),
         ])
         if (!alive) return
         setPoints(pts)
         setGoal(g)
         setGoalKg(target ? Number(target) : null)
-        setHeightCm(profile?.height_cm ?? null)
-        setStreak(countStreak(days.map((d) => d.local_date)))
+        setHeightCm(profile?.height_cm || 175)
+        setStreak(countStreak(allDays))
         setLatestScan(scan)
       })()
       return () => {

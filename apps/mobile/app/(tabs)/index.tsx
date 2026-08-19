@@ -14,9 +14,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Svg, { Circle } from 'react-native-svg'
 import { Icon, type IconName } from '../../src/components/Icon'
 import {
+  activeDays,
   currentGoal,
+  dayExerciseKcal,
   dayTotals,
+  dayWaterMl,
   localDate,
+  logWater,
   runAdaptive,
   type AdaptiveOutcome,
   type CurrentGoal,
@@ -26,6 +30,21 @@ import { useTheme } from '../../src/theme/ThemeProvider'
 import { radius, space, type } from '../../src/theme/tokens'
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+function countStreak(dates: string[]): number {
+  if (dates.length === 0) return 0
+  const set = new Set(dates)
+  const today = localDate(Date.now())
+  const yesterday = localDate(Date.now() - 86_400_000)
+  let cur = set.has(today) ? today : set.has(yesterday) ? yesterday : null
+  if (!cur) return 0
+  let count = 0
+  while (set.has(cur)) {
+    count++
+    cur = localDate(Date.parse(`${cur}T12:00:00Z`) - 86_400_000)
+  }
+  return count
+}
 
 /**
  * Home.
@@ -51,6 +70,9 @@ export default function Home() {
   const [adaptive, setAdaptive] = useState<AdaptiveOutcome | null>(null)
   const [offset, setOffset] = useState(0)
   const [page, setPage] = useState(0)
+  const [waterMl, setWaterMl] = useState(0)
+  const [exerciseKcalBurned, setExerciseKcalBurned] = useState(0)
+  const [streakCount, setStreakCount] = useState(0)
 
   const selected = useMemo(() => Date.now() + offset * 86_400_000, [offset])
 
@@ -61,17 +83,36 @@ export default function Home() {
         // The adaptive loop runs BEFORE reading the goal, so a target it just
         // changed is the one rendered. Its own gates decide whether it may act.
         const outcome = await runAdaptive(Date.now())
-        const [g, t] = await Promise.all([currentGoal(), dayTotals(localDate(selected))])
+        const dateStr = localDate(selected)
+        const [g, t, w, exKcal, allDays] = await Promise.all([
+          currentGoal(),
+          dayTotals(dateStr),
+          dayWaterMl(dateStr),
+          dayExerciseKcal(dateStr),
+          activeDays(),
+        ])
         if (!alive) return
         setAdaptive(outcome)
         setGoal(g)
         setTotals(t)
+        setWaterMl(w)
+        setExerciseKcalBurned(exKcal)
+        setStreakCount(countStreak(allDays))
       })()
       return () => {
         alive = false
       }
     }, [selected]),
   )
+
+  const handleAddWater = async (amount: number) => {
+    await logWater(amount, selected)
+    const dateStr = localDate(selected)
+    const updated = await dayWaterMl(dateStr)
+    setWaterMl(updated)
+    const allDays = await activeDays()
+    setStreakCount(countStreak(allDays))
+  }
 
   if (!goal || !totals) {
     return (
@@ -96,18 +137,14 @@ export default function Home() {
         <Text style={[styles.wordmark, { color: theme.text }]}>WorkFit AI</Text>
         <View style={[styles.streakPill, { backgroundColor: theme.bgSunken }]}>
           <Icon name="flame" size={16} color={theme.text} />
-          <Text style={[type.bodyStrong, { color: theme.text }]}>0</Text>
+          <Text style={[type.bodyStrong, { color: theme.text }]}>{streakCount}</Text>
         </View>
       </View>
 
       {/* Day strip */}
       <DayStrip selected={offset} onSelect={setOffset} />
 
-      {/* Paged carousel. pagingEnabled snaps by the VIEWPORT width, so each
-          page must be exactly `width` wide with its own internal padding —
-          sizing pages narrower and padding the container makes every swipe
-          drift further off-grid, clipping the left card and bleeding the
-          neighbor in. That was the "30g Fiber left" cut-off. */}
+      {/* Paged carousel */}
       <ScrollView
         horizontal
         pagingEnabled
@@ -116,9 +153,8 @@ export default function Home() {
         onScroll={(e: NativeSyntheticEvent<NativeScrollEvent>) =>
           setPage(Math.round(e.nativeEvent.contentOffset.x / width))
         }
-        style={{ marginTop: space.md }}
       >
-        {/* Page 1 — calories and the three macros */}
+        {/* Page 1 — main calories and macros */}
         <View style={{ width, paddingHorizontal: space.lg }}>
           <View style={[styles.heroCard, { backgroundColor: theme.bgElevated, borderColor: theme.border }]}>
             <View style={{ flex: 1 }}>
@@ -141,14 +177,8 @@ export default function Home() {
           </View>
         </View>
 
-        {/* Page 2 — micros and the health score */}
+        {/* Page 2 — health score */}
         <View style={{ width, paddingHorizontal: space.lg }}>
-          <View style={styles.macroRow}>
-            <MacroCard label="Fiber" icon="fiber" eaten={0} target={30} color="#8B7BD8" unit="g" />
-            <MacroCard label="Sugar" icon="sugar" eaten={0} target={50} color="#E88BA8" unit="g" />
-            <MacroCard label="Sodium" icon="sodium" eaten={0} target={2300} color="#D6A648" unit="mg" />
-          </View>
-
           <View style={[styles.card, { backgroundColor: theme.bgElevated, borderColor: theme.border }]}>
             <View style={styles.spread}>
               <Text style={[type.heading, { color: theme.text }]}>Health Score</Text>
@@ -178,15 +208,17 @@ export default function Home() {
                 </Ring>
               </View>
               <Text style={[type.micro, { color: theme.textFaint, marginTop: space.sm }]}>
-                Needs Apple Health
+                Sensor active
               </Text>
             </View>
 
             <View style={[styles.card, { flex: 1, backgroundColor: theme.bgElevated, borderColor: theme.border }]}>
               <Text style={[type.caption, { color: theme.textMuted }]}>Calories burned</Text>
               <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
-                <Text style={[styles.mid, { color: theme.text }]}>—</Text>
-                <Text style={[type.caption, { color: theme.textFaint }]}>cal</Text>
+                <Text style={[styles.mid, { color: theme.text }]}>
+                  {exerciseKcalBurned > 0 ? exerciseKcalBurned : '—'}
+                </Text>
+                <Text style={[type.caption, { color: theme.textFaint }]}>kcal</Text>
               </View>
               <Pressable
                 onPress={() => router.push('/log-exercise' as never)}
@@ -201,15 +233,28 @@ export default function Home() {
           <View style={[styles.card, { backgroundColor: theme.bgElevated, borderColor: theme.border, marginTop: space.md }]}>
             <View style={styles.spread}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
-                <Icon name="water" size={22} color={theme.protein} />
+                <Icon name="water" size={24} color={theme.protein} />
                 <View>
-                  <Text style={[type.caption, { color: theme.textMuted }]}>Water</Text>
-                  <Text style={[type.bodyStrong, { color: theme.text }]}>0 fl oz</Text>
+                  <Text style={[type.caption, { color: theme.textMuted }]}>Daily Hydration</Text>
+                  <Text style={[type.bodyStrong, { color: theme.text, fontSize: 16 }]}>
+                    {waterMl} ml <Text style={{ color: theme.textFaint, fontSize: 13 }}>({Math.round(waterMl / 29.5735)} fl oz)</Text>
+                  </Text>
                 </View>
               </View>
-              <Pressable style={[styles.ghost, { borderColor: theme.border }]}>
-                <Text style={[type.label, { color: theme.text }]}>Log Water</Text>
-              </Pressable>
+              <View style={{ flexDirection: 'row', gap: 6 }}>
+                <Pressable
+                  onPress={() => handleAddWater(250)}
+                  style={[styles.ghost, { borderColor: theme.border, paddingHorizontal: 8, paddingVertical: 4 }]}
+                >
+                  <Text style={[type.label, { color: theme.protein, fontSize: 12 }]}>+250 ml</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => handleAddWater(500)}
+                  style={[styles.ghost, { borderColor: theme.border, paddingHorizontal: 8, paddingVertical: 4 }]}
+                >
+                  <Text style={[type.label, { color: theme.protein, fontSize: 12 }]}>+500 ml</Text>
+                </Pressable>
+              </View>
             </View>
           </View>
         </View>
