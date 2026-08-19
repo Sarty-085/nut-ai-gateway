@@ -9,6 +9,7 @@ const ALL_TASKS: GatewayTask[] = [
   'receipt-scan',
   'web-lookup',
   'exercise-estimate',
+  'body-scan',
 ]
 
 /**
