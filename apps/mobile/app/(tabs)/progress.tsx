@@ -28,6 +28,7 @@ export default function Progress() {
   const [goal, setGoal] = useState<CurrentGoal | null>(null)
   const [heightCm, setHeightCm] = useState<number>(175)
   const [goalKg, setGoalKg] = useState<number | null>(null)
+  const [initialStartKg, setInitialStartKg] = useState<number | null>(null)
   const [streak, setStreak] = useState(0)
   const [window, setWindow] = useState<(typeof WINDOWS)[number]['key']>('90D')
   const [latestScan, setLatestScan] = useState<SavedBodyScanRow | null>(null)
@@ -37,10 +38,11 @@ export default function Progress() {
       let alive = true
       void (async () => {
         const h = await db()
-        const [pts, g, target, profile, allDays, scan] = await Promise.all([
+        const [pts, g, target, startW, profile, allDays, scan] = await Promise.all([
           weightHistory(),
           currentGoal(),
           setting('goal.desiredWeightKg', ''),
+          setting('goal.startWeightKg', ''),
           h.get<{ height_cm: number }>('SELECT height_cm FROM user_profile WHERE id = 1'),
           activeDays(),
           getLatestBodyScan(),
@@ -49,6 +51,7 @@ export default function Progress() {
         setPoints(pts)
         setGoal(g)
         setGoalKg(target ? Number(target) : null)
+        setInitialStartKg(startW ? Number(startW) : null)
         setHeightCm(profile?.height_cm || 175)
         setStreak(countStreak(allDays))
         setLatestScan(scan)
@@ -64,7 +67,7 @@ export default function Progress() {
   const slope = useMemo(() => trendSlopeLbPerWeek(trend), [trend])
 
   const currentKg = points[points.length - 1]?.weightKg ?? null
-  const startKg = points[0]?.weightKg ?? null
+  const startKg = initialStartKg ?? (points[0]?.weightKg ?? null)
 
   const pctOfGoal =
     startKg != null && currentKg != null && goalKg != null && Math.abs(goalKg - startKg) > 0.01
@@ -159,7 +162,7 @@ export default function Progress() {
           )}
 
           <Pressable
-            onPress={() => router.push('/body-scan' as never)}
+            onPress={() => router.push('/body-scan?viewOnly=true' as never)}
             style={{ marginTop: space.sm, backgroundColor: '#22222B', paddingVertical: 10, borderRadius: 8, alignItems: 'center' }}
           >
             <Text style={{ color: '#F7F7FA', fontSize: 12, fontWeight: '700' }}>Open Full Biomechanics Report</Text>
@@ -222,10 +225,10 @@ export default function Progress() {
 
         {raw.length === 0 ? (
           <Text style={[type.caption, { color: theme.textMuted, marginTop: space.md }]}>
-            No weigh-ins yet. It takes about five before a slope means anything.
+            No weigh-ins yet. Log your first weight to begin tracking progress.
           </Text>
         ) : (
-          <WeightChart trend={visible} />
+          <WeightChart trend={visible.length > 0 ? visible : trend} />
         )}
 
         <View style={[styles.segment, { backgroundColor: theme.bgElevated }]}>
@@ -254,25 +257,63 @@ export default function Progress() {
         </View>
       </View>
 
+      {/* Tabular Column: Recorded Weigh-ins */}
+      {points.length > 0 && (
+        <View style={[styles.card, { backgroundColor: theme.bgSunken }]}>
+          <Text style={[type.heading, { color: theme.text, marginBottom: space.sm }]}>Recorded Weigh-ins</Text>
+          <View style={{ backgroundColor: theme.bgElevated, borderRadius: 12, padding: space.sm }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingBottom: 6, borderBottomWidth: 1, borderColor: theme.border }}>
+              <Text style={[type.caption, { color: theme.textMuted, fontWeight: '700' }]}>DATE</Text>
+              <Text style={[type.caption, { color: theme.textMuted, fontWeight: '700' }]}>WEIGHT</Text>
+              <Text style={[type.caption, { color: theme.textMuted, fontWeight: '700' }]}>FROM START</Text>
+            </View>
+            {[...points].reverse().map((pt, idx) => {
+              const dateStr = new Date(pt.day * 86_400_000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+              const lbs = pt.weightKg * LB_PER_KG
+              const diffFromStart = startKg != null ? (pt.weightKg - startKg) * LB_PER_KG : 0
+              return (
+                <View key={idx} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderBottomWidth: idx < points.length - 1 ? 1 : 0, borderColor: theme.border }}>
+                  <Text style={[type.body, { color: theme.text, fontSize: 13 }]}>{dateStr}</Text>
+                  <Text style={[type.bodyStrong, { color: theme.text, fontSize: 13 }]}>{lbs.toFixed(1)} lbs</Text>
+                  <Text style={[type.bodyStrong, { color: diffFromStart === 0 ? theme.textMuted : diffFromStart > 0 ? theme.fat : theme.affirm, fontSize: 13 }]}>
+                    {diffFromStart > 0 ? `+${diffFromStart.toFixed(1)}` : diffFromStart.toFixed(1)} lbs
+                  </Text>
+                </View>
+              )
+            })}
+          </View>
+        </View>
+      )}
+
       <View style={[styles.card, { backgroundColor: theme.bgSunken }]}>
         <Text style={[type.heading, { color: theme.text }]}>Weight changes</Text>
         {CHANGE_WINDOWS.map((d) => (
-          <ChangeRow key={d} label={`${d} day`} lbs={changeOver(trend, d)} />
+          <ChangeRow
+            key={d}
+            label={`${d} day`}
+            lbs={changeOver(trend, d) ?? (startKg != null && currentKg != null ? (currentKg - startKg) * LB_PER_KG : 0)}
+          />
         ))}
-        <ChangeRow label="All time" lbs={changeOver(trend, Number.POSITIVE_INFINITY)} />
+        <ChangeRow
+          label="All time"
+          lbs={changeOver(trend, Number.POSITIVE_INFINITY) ?? (startKg != null && currentKg != null ? (currentKg - startKg) * LB_PER_KG : 0)}
+        />
         <Text style={[type.caption, { color: theme.textFaint, marginTop: space.md, lineHeight: 18 }]}>
-          Measured on the trend line, not raw weigh-ins — a 3 lb overnight swing is water, and
-          reporting it as a change would be reporting noise as progress.
+          Measured from your start baseline and rolling weight trend entries.
         </Text>
       </View>
 
       <View style={[styles.card, { backgroundColor: theme.bgSunken }]}>
         <Text style={[type.heading, { color: theme.text }]}>Rate of change</Text>
         <Text style={[styles.big, { color: theme.text }]}>
-          {slope == null ? '—' : `${slope > 0 ? '+' : ''}${slope.toFixed(2)} lb/wk`}
+          {slope == null
+            ? (points.length >= 2 && startKg != null && currentKg != null
+              ? `${((currentKg - startKg) * LB_PER_KG / Math.max(1, (points[points.length - 1].day - points[0].day) / 7)).toFixed(2)} lb/wk`
+              : '0.00 lb/wk')
+            : `${slope > 0 ? '+' : ''}${slope.toFixed(2)} lb/wk`}
         </Text>
         <Text style={[type.caption, { color: theme.textMuted }]}>
-          {slope == null ? 'Not enough weigh-ins yet.' : `From ${raw.length} weigh-ins.`}
+          From {points.length} weigh-in{points.length !== 1 ? 's' : ''}.
         </Text>
       </View>
 

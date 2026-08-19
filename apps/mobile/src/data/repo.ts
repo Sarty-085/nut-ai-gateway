@@ -1,8 +1,10 @@
 import { migrate, type DbAdapter } from '@nutai/db-adapter'
 import {
+  computeCalorieTarget,
   computeMacros,
   computeTrend,
   isDayCompleteEnough,
+  LB_PER_KG,
   trendSlopeLbPerWeek,
   updateAdaptiveTdee,
   type Goal,
@@ -336,10 +338,64 @@ export async function logMeal(
 
 export async function logWeight(kg: number, now: number): Promise<void> {
   const h = await db()
+  const dateStr = localDate(now)
   await h.run(
     'INSERT OR REPLACE INTO weight_entries (local_date, weight_kg, logged_at) VALUES (?,?,?)',
-    [localDate(now), kg, now],
+    [dateStr, kg, now],
   )
+
+  // Recompute calorie target and macros for new weight
+  try {
+    const [profile, desiredStr, currentG] = await Promise.all([
+      h.get<{ sex: any; birth_year: number; height_cm: number; activity_level: any }>(
+        'SELECT sex, birth_year, height_cm, activity_level FROM user_profile WHERE id = 1',
+      ),
+      setting('goal.desiredWeightKg', ''),
+      currentGoal(),
+    ])
+    if (profile && currentG) {
+      const birthYear = profile.birth_year || 1995
+      const age = Math.max(16, new Date().getFullYear() - birthYear)
+      const targetKg = desiredStr ? Number(desiredStr) : kg
+      const goalType: Goal = targetKg < kg - 0.5 ? 'lose' : targetKg > kg + 0.5 ? 'gain' : 'maintain'
+      const deltaLb = Math.abs((targetKg - kg) * LB_PER_KG)
+      const rate = goalType === 'maintain' ? 0 : Math.min(1.5, Math.max(0.5, deltaLb / 12))
+
+      const target = computeCalorieTarget({
+        sex: profile.sex || 'unspecified',
+        weightKg: kg,
+        heightCm: profile.height_cm || 175,
+        ageYears: age,
+        activity: (profile.activity_level as any) || 'moderate',
+        goal: goalType,
+        rateLbPerWeek: rate,
+      })
+      const macros = computeMacros(target.target, kg, goalType)
+
+      await h.run(
+        `INSERT INTO goals
+           (effective_from, goal_type, rate_lb_per_week, target_kcal, target_raw_kcal,
+            floor_applied, protein_g, fat_g, carbs_g, bmr, tdee, adaptive)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [
+          now,
+          goalType,
+          rate,
+          target.target,
+          target.targetRaw,
+          target.floorApplied ? 1 : 0,
+          macros.protein_g,
+          macros.fat_g,
+          macros.carbs_g,
+          target.bmr,
+          target.tdee,
+          currentG.adaptive ? 1 : 0,
+        ],
+      )
+    }
+  } catch {
+    // Keep weight logging successful even if goal recalculation fails
+  }
 }
 
 export async function weightHistory(): Promise<WeightPoint[]> {
@@ -573,7 +629,7 @@ export async function deleteBodyScan(id: number): Promise<void> {
 export async function logWater(amountMl: number, now: number = Date.now()): Promise<void> {
   const h = await db()
   const date = localDate(now)
-  await h.run('INSERT INTO water_entries (local_date, amount_ml, logged_at) VALUES (?,?,?)', [
+  await h.run('INSERT INTO water_entries (local_date, ml, logged_at) VALUES (?,?,?)', [
     date,
     amountMl,
     now,
@@ -583,7 +639,7 @@ export async function logWater(amountMl: number, now: number = Date.now()): Prom
 export async function dayWaterMl(date: string): Promise<number> {
   const h = await db()
   const row = await h.get<{ total: number }>(
-    'SELECT COALESCE(SUM(amount_ml), 0) as total FROM water_entries WHERE local_date = ?',
+    'SELECT COALESCE(SUM(ml), 0) as total FROM water_entries WHERE local_date = ?',
     [date],
   )
   return row?.total ?? 0

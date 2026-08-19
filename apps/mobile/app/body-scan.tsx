@@ -1,7 +1,7 @@
 import { BodyScanPayload, BodyScanPayloadZ } from '@nutai/core-schema'
 import { CameraView, useCameraPermissions } from 'expo-camera'
 import * as ImagePicker from 'expo-image-picker'
-import { router } from 'expo-router'
+import { router, useLocalSearchParams } from 'expo-router'
 import { useEffect, useRef, useState } from 'react'
 import {
   ActivityIndicator,
@@ -18,7 +18,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Svg, { Circle, Line, Path, Rect, Text as SvgText, G } from 'react-native-svg'
 import { Icon } from '../src/components/Icon'
-import { saveBodyScan } from '../src/data/repo'
+import { getLatestBodyScan, saveBodyScan } from '../src/data/repo'
 import { runBodyScan } from '../src/inference/pathA/client'
 import { useTheme } from '../src/theme/ThemeProvider'
 import { radius, space, type } from '../src/theme/tokens'
@@ -59,6 +59,7 @@ function getExerciseCategory(name: string, targetArea: string): ExerciseCategory
 }
 
 export default function BodyScanScreen() {
+  const params = useLocalSearchParams<{ viewOnly?: string; reportId?: string }>()
   const theme = useTheme()
   const insets = useSafeAreaInsets()
   const [permission, requestPermission] = useCameraPermissions()
@@ -77,6 +78,24 @@ export default function BodyScanScreen() {
   const [movementPhase, setMovementPhase] = useState<'start' | 'peak'>('peak')
   const [drillTimerActive, setDrillTimerActive] = useState(false)
   const [drillSecondsLeft, setDrillSecondsLeft] = useState(30)
+
+  // Load saved scan immediately if opened in viewOnly mode
+  useEffect(() => {
+    if (params.viewOnly === 'true' || params.reportId) {
+      void (async () => {
+        try {
+          const scan = await getLatestBodyScan()
+          if (scan?.raw_payload_json) {
+            const parsed = JSON.parse(scan.raw_payload_json)
+            setScanResult(parsed)
+            if (scan.photo_uri) setPhotoUri(scan.photo_uri)
+          }
+        } catch {
+          // ignore
+        }
+      })()
+    }
+  }, [params.viewOnly, params.reportId])
 
   // Countdown timer effect for camera photo capture
   useEffect(() => {
