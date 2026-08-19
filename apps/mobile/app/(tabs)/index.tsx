@@ -93,7 +93,7 @@ export default function Home() {
     >
       {/* Header */}
       <View style={styles.header}>
-        <Text style={[styles.wordmark, { color: theme.text }]}>Nut AI</Text>
+        <Text style={[styles.wordmark, { color: theme.text }]}>WorkFit AI</Text>
         <View style={[styles.streakPill, { backgroundColor: theme.bgSunken }]}>
           <Icon name="flame" size={16} color={theme.text} />
           <Text style={[type.bodyStrong, { color: theme.text }]}>0</Text>

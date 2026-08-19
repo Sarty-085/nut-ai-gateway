@@ -47,6 +47,7 @@ export const EXPORT_TABLES = [
   'exercise_entries',
   'meals',
   'log_items',
+  'body_scans',
   'scan_cost_ledger',
 ] as const
 

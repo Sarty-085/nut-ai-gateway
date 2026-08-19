@@ -7,10 +7,10 @@ import type { ExpoConfig } from 'expo/config'
  * change rather than a grep across the codebase. `Nut AI` was chosen over the
  * research documents' working codename `Tally`.
  */
-const NAME = 'Nut AI'
-const SLUG = 'nut-ai'
-const BUNDLE_ID = 'com.nutai.app'
-const SCHEME = 'nutai'
+const NAME = 'WorkFit AI'
+const SLUG = 'workfit-ai'
+const BUNDLE_ID = 'com.workfit.app'
+const SCHEME = 'workfit'
 
 /**
  * Apple will not issue a HealthKit-capable provisioning profile to a free
@@ -51,11 +51,11 @@ const config: ExpoConfig = {
       // so there is no non-exempt encryption to declare.
       ITSAppUsesNonExemptEncryption: false,
       NSCameraUsageDescription:
-        'Nut AI uses your camera to photograph meals and scan barcodes. Photos stay on your device unless you choose a cloud provider during setup.',
+        'WorkFit AI uses your camera to photograph meals, scan barcodes, and evaluate posture biomechanics. Photos stay private on your device or private gateway.',
       NSPhotoLibraryUsageDescription:
-        'Nut AI can read a meal photo you already took. Photos stay on your device unless you choose a cloud provider during setup.',
+        'WorkFit AI can analyze meal and body posture photos from your library. Photos stay private on your device or private gateway.',
       NSFaceIDUsageDescription:
-        'Nut AI uses Face ID only when you reveal or edit a stored API key — never to log a meal.',
+        'WorkFit AI uses Face ID only when you reveal or edit a stored API key — never to log a meal.',
     },
   },
 
@@ -71,7 +71,7 @@ const config: ExpoConfig = {
 
   plugins: [
     'expo-router',
-    ['expo-camera', { cameraPermission: 'Nut AI uses your camera to photograph meals and scan barcodes.' }],
+    ['expo-camera', { cameraPermission: 'WorkFit AI uses your camera to photograph meals, scan barcodes, and analyze posture biomechanics.' }],
     'expo-secure-store',
     'expo-sqlite',
     ...(SKIP_HEALTHKIT
@@ -83,9 +83,9 @@ const config: ExpoConfig = {
               // Both strings are required by App Review, and they must describe what we
               // actually do rather than what HealthKit could theoretically allow.
               NSHealthShareUsageDescription:
-                'Nut AI reads your steps, workouts and weight so your calorie target reflects what you actually did, instead of a fixed guess.',
+                'WorkFit AI reads your steps, workouts and weight so your calorie target reflects what you actually did, instead of a fixed guess.',
               NSHealthUpdateUsageDescription:
-                'Nut AI writes the meals you log to Health so your nutrition data lives alongside the rest of your health record.',
+                'WorkFit AI writes the meals you log to Health so your nutrition data lives alongside the rest of your health record.',
               // Background delivery is deliberately off. It is an extra entitlement, it
               // is a battery cost, and nothing here needs to react to a step count
               // while the app is closed.

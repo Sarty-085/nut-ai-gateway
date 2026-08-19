@@ -50,7 +50,7 @@ export default function Camera() {
     return (
       <View style={[styles.center, { backgroundColor: theme.bg, paddingTop: insets.top }]}>
         <Text style={[type.heading, { color: theme.text, textAlign: 'center' }]}>
-          Nut AI needs your camera
+          WorkFit AI needs your camera
         </Text>
         <Text style={[type.caption, { color: theme.textMuted, textAlign: 'center', marginTop: space.sm }]}>
           Photos stay on your device unless you chose a cloud provider during setup.

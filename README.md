@@ -1,4 +1,4 @@
-# 🥜 Nut AI — AI Nutrition Tracker & Biomechanical Body Companion
+# ⚡ WorkFit AI — Next-Gen AI Fitness, Nutrition & Posture Companion
 
 > **An open-source, private AI nutrition tracker and biomechanical posture coach that never shows a number it cannot justify.**
 
@@ -7,7 +7,7 @@
 [![Gateway](https://img.shields.io/badge/Private%20Gateway-Multi--Provider%20Pool-10b981.svg?style=flat-square)](https://render.com/)
 [![License](https://img.shields.io/badge/License-AGPL--3.0-orange.svg?style=flat-square)](LICENSE)
 
-Nut AI unites two state-of-the-art perception engines into a single frictionless fitness companion:
+WorkFit AI unites two state-of-the-art perception engines into a single frictionless fitness companion:
 1. **Zero-Friction AI Nutrition Tracker**: Point your camera at any meal to get calories and macros backed by honest uncertainty ranges, transparent assumptions, and deterministic USDA-grounded reconciliation.
 2. **AI Body & Posture Biomechanical Scan**: Stand in front of your phone camera with live silhouette guides to receive instant posture alignment scoring, estimated body-fat percentage ranges, muscle symmetry analysis, and personalized corrective exercise protocols.
 

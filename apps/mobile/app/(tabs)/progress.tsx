@@ -4,7 +4,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Svg, { Circle, Line as SvgLine, Path, Rect, Text as SvgText } from 'react-native-svg'
 import { bmi, computeTrend, trendSlopeLbPerWeek, type TrendPoint, type WeightPoint } from '@nutai/goals'
-import { currentGoal, db, setting, weightHistory, type CurrentGoal } from '../../src/data/repo'
+import { currentGoal, db, getLatestBodyScan, setting, weightHistory, type CurrentGoal, type SavedBodyScanRow } from '../../src/data/repo'
 import { Icon } from '../../src/components/Icon'
 import { useTheme } from '../../src/theme/ThemeProvider'
 import { radius, space, type } from '../../src/theme/tokens'
@@ -30,18 +30,20 @@ export default function Progress() {
   const [goalKg, setGoalKg] = useState<number | null>(null)
   const [streak, setStreak] = useState(0)
   const [window, setWindow] = useState<(typeof WINDOWS)[number]['key']>('90D')
+  const [latestScan, setLatestScan] = useState<SavedBodyScanRow | null>(null)
 
   useFocusEffect(
     useCallback(() => {
       let alive = true
       void (async () => {
         const h = await db()
-        const [pts, g, target, profile, days] = await Promise.all([
+        const [pts, g, target, profile, days, scan] = await Promise.all([
           weightHistory(),
           currentGoal(),
           setting('goal.desiredWeightKg', ''),
           h.get<{ height_cm: number }>('SELECT height_cm FROM user_profile WHERE id = 1'),
           h.all<{ local_date: string }>('SELECT DISTINCT local_date FROM meals ORDER BY local_date DESC'),
+          getLatestBodyScan(),
         ])
         if (!alive) return
         setPoints(pts)
@@ -49,6 +51,7 @@ export default function Progress() {
         setGoalKg(target ? Number(target) : null)
         setHeightCm(profile?.height_cm ?? null)
         setStreak(countStreak(days.map((d) => d.local_date)))
+        setLatestScan(scan)
       })()
       return () => {
         alive = false
@@ -100,27 +103,90 @@ export default function Progress() {
         </View>
       </View>
 
-      {/* AI Body & Posture Scan Card */}
-      <Pressable
-        onPress={() => router.push('/body-scan' as never)}
-        style={[styles.card, { backgroundColor: '#0f172a', borderColor: '#38bdf8', borderWidth: 1 }]}
-      >
-        <View style={styles.spread}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.xs }}>
-            <Icon name="scan" size={20} color="#38bdf8" />
-            <Text style={[type.heading, { color: '#fff', fontSize: 16 }]}>AI Body & Posture Scan</Text>
+      {/* WorkFit AI Body & Posture Section */}
+      {latestScan ? (
+        <View style={[styles.card, { backgroundColor: '#16161C', borderColor: '#22222B', borderWidth: 1 }]}>
+          <View style={styles.spread}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.xs }}>
+              <Icon name="muscle" size={20} color={theme.protein} />
+              <Text style={[type.heading, { color: '#F7F7FA', fontSize: 16 }]}>WorkFit Biomechanics</Text>
+            </View>
+            <Pressable onPress={() => router.push('/body-scan' as never)}>
+              <Text style={{ color: theme.protein, fontSize: 12, fontWeight: '700' }}>Re-scan →</Text>
+            </Pressable>
           </View>
-          <View style={{ backgroundColor: 'rgba(56, 189, 248, 0.15)', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 }}>
-            <Text style={{ color: '#38bdf8', fontSize: 11, fontWeight: '700' }}>AI TRAINER</Text>
+
+          {/* Quick Metrics */}
+          <View style={{ flexDirection: 'row', gap: space.sm, marginTop: space.sm }}>
+            <View style={{ flex: 1, backgroundColor: '#0B0B0F', padding: space.sm, borderRadius: 10, borderWidth: 1, borderColor: '#22222B' }}>
+              <Text style={{ color: '#8A8A99', fontSize: 10, fontWeight: '700', letterSpacing: 0.8 }}>POSTURE SCORE</Text>
+              <Text style={{ color: '#F7F7FA', fontSize: 24, fontWeight: '900', marginTop: 2 }}>
+                {latestScan.posture_score ?? '—'}
+                <Text style={{ fontSize: 12, color: '#8A8A99', fontWeight: '500' }}> /100</Text>
+              </Text>
+              <Text style={{ color: theme.affirm, fontSize: 11, fontWeight: '600', marginTop: 2 }}>
+                {latestScan.shoulders_status === 'level' ? '✓ Shoulders Level' : '⚡ Asymmetry'}
+              </Text>
+            </View>
+
+            <View style={{ flex: 1, backgroundColor: '#0B0B0F', padding: space.sm, borderRadius: 10, borderWidth: 1, borderColor: '#22222B' }}>
+              <Text style={{ color: '#8A8A99', fontSize: 10, fontWeight: '700', letterSpacing: 0.8 }}>EST. BODY FAT</Text>
+              <Text style={{ color: '#F7F7FA', fontSize: 20, fontWeight: '800', marginTop: 4 }}>
+                {latestScan.body_fat_min != null ? `${latestScan.body_fat_min}% - ${latestScan.body_fat_max}%` : '—'}
+              </Text>
+              <Text style={{ color: theme.protein, fontSize: 11, fontWeight: '600', marginTop: 2 }}>
+                {latestScan.body_fat_category || 'Athletic'}
+              </Text>
+            </View>
           </View>
+
+          {/* Saved Corrective Protocol Summary */}
+          {latestScan.corrective_exercises_json && (
+            <View style={{ marginTop: space.md }}>
+              <Text style={{ color: '#8A8A99', fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: 4 }}>
+                ASSIGNED CORRECTIVE ROUTINE
+              </Text>
+              {JSON.parse(latestScan.corrective_exercises_json).slice(0, 2).map((ex: any, idx: number) => (
+                <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginVertical: 3, backgroundColor: '#0B0B0F', padding: 8, borderRadius: 8, borderWidth: 1, borderColor: '#22222B' }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: '#F7F7FA', fontSize: 13, fontWeight: '700' }}>{ex.name}</Text>
+                    <Text style={{ color: '#8A8A99', fontSize: 11 }}>{ex.target_area}</Text>
+                  </View>
+                  <Text style={{ color: theme.protein, fontSize: 12, fontWeight: '600' }}>{ex.sets_reps}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+
+          <Pressable
+            onPress={() => router.push('/body-scan' as never)}
+            style={{ marginTop: space.sm, backgroundColor: '#22222B', paddingVertical: 10, borderRadius: 8, alignItems: 'center' }}
+          >
+            <Text style={{ color: '#F7F7FA', fontSize: 12, fontWeight: '700' }}>Open Full Biomechanics Report</Text>
+          </Pressable>
         </View>
-        <Text style={[type.caption, { color: '#94a3b8', marginTop: space.xs }]}>
-          Stand in front of your camera for an instant assessment of posture alignment, body-fat range, and personalized corrective drills.
-        </Text>
-        <View style={{ marginTop: space.sm, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' }}>
-          <Text style={{ color: '#38bdf8', fontWeight: '700', fontSize: 13 }}>Launch Body Scan →</Text>
-        </View>
-      </Pressable>
+      ) : (
+        <Pressable
+          onPress={() => router.push('/body-scan' as never)}
+          style={[styles.card, { backgroundColor: '#16161C', borderColor: '#22222B', borderWidth: 1 }]}
+        >
+          <View style={styles.spread}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.xs }}>
+              <Icon name="muscle" size={20} color={theme.protein} />
+              <Text style={[type.heading, { color: '#F7F7FA', fontSize: 16 }]}>WorkFit Body & Posture Scan</Text>
+            </View>
+            <View style={{ backgroundColor: '#22222B', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 }}>
+              <Text style={{ color: theme.protein, fontSize: 11, fontWeight: '700' }}>AI TRAINER</Text>
+            </View>
+          </View>
+          <Text style={[type.caption, { color: '#B8B8C4', marginTop: space.xs }]}>
+            Stand in front of your camera for an instant assessment of posture alignment, body-fat range, and personalized corrective drills.
+          </Text>
+          <View style={{ marginTop: space.sm, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' }}>
+            <Text style={{ color: theme.protein, fontWeight: '700', fontSize: 13 }}>Launch Body Scan →</Text>
+          </View>
+        </Pressable>
+      )}
 
       <View style={[styles.card, { backgroundColor: theme.bgSunken }]}>
         <View style={styles.spread}>

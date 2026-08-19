@@ -475,3 +475,94 @@ export async function runAdaptive(now: number): Promise<AdaptiveOutcome> {
     explanation: result.explanation,
   }
 }
+
+import type { BodyScanPayload } from '@nutai/core-schema'
+
+export interface SavedBodyScanRow {
+  id: number
+  scanned_at: number
+  local_date: string
+  photo_uri: string | null
+  posture_score: number | null
+  head_neck_status: string | null
+  shoulders_status: string | null
+  pelvis_status: string | null
+  body_fat_min: number | null
+  body_fat_max: number | null
+  body_fat_category: string | null
+  body_type: string | null
+  muscularity_rating: number | null
+  symmetry_score: number | null
+  upper_body_balance: string | null
+  core_midsection: string | null
+  lower_body_balance: string | null
+  tightness_areas_json: string | null
+  trainer_summary: string | null
+  corrective_exercises_json: string | null
+  mobility_drills_json: string | null
+  raw_payload_json: string | null
+  created_at: number
+}
+
+export async function saveBodyScan(scan: BodyScanPayload, photoUri?: string | null): Promise<number> {
+  const h = await db()
+  const now = Date.now()
+  const date = localDate(now)
+
+  const posture = scan.posture_assessment
+  const comp = scan.body_composition
+  const symmetry = scan.muscle_symmetry
+  const mobility = scan.mobility_indicators
+  const action = scan.action_plan
+
+  const res = await h.run(
+    `INSERT INTO body_scans
+       (scanned_at, local_date, photo_uri, posture_score, head_neck_status, shoulders_status,
+        pelvis_status, body_fat_min, body_fat_max, body_fat_category, body_type, muscularity_rating,
+        symmetry_score, upper_body_balance, core_midsection, lower_body_balance, tightness_areas_json,
+        trainer_summary, corrective_exercises_json, mobility_drills_json, raw_payload_json, created_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    [
+      now,
+      date,
+      photoUri ?? null,
+      posture?.overall_score ?? null,
+      posture?.head_neck?.status ?? null,
+      posture?.shoulders?.status ?? null,
+      posture?.spine_pelvis?.pelvic_tilt ?? null,
+      comp?.body_fat_range?.min_percent ?? null,
+      comp?.body_fat_range?.max_percent ?? null,
+      comp?.body_fat_range?.category ?? null,
+      comp?.body_type ?? null,
+      comp?.muscularity_rating ?? null,
+      symmetry?.symmetry_score ?? null,
+      symmetry?.upper_body_balance ?? null,
+      symmetry?.core_midsection ?? null,
+      symmetry?.lower_body_balance ?? null,
+      mobility?.tightness_areas ? JSON.stringify(mobility.tightness_areas) : null,
+      action?.trainer_summary ?? null,
+      action?.corrective_exercises ? JSON.stringify(action.corrective_exercises) : null,
+      action?.mobility_drills ? JSON.stringify(action.mobility_drills) : null,
+      JSON.stringify(scan),
+      now,
+    ],
+  )
+  return Number(res.lastInsertRowId ?? 0)
+}
+
+export async function listBodyScans(): Promise<SavedBodyScanRow[]> {
+  const h = await db()
+  return h.all<SavedBodyScanRow>('SELECT * FROM body_scans ORDER BY scanned_at DESC')
+}
+
+export async function getLatestBodyScan(): Promise<SavedBodyScanRow | null> {
+  const h = await db()
+  const row = await h.get<SavedBodyScanRow>('SELECT * FROM body_scans ORDER BY scanned_at DESC LIMIT 1')
+  return row ?? null
+}
+
+export async function deleteBodyScan(id: number): Promise<void> {
+  const h = await db()
+  await h.run('DELETE FROM body_scans WHERE id = ?', [id])
+}
+

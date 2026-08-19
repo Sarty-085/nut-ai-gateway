@@ -253,9 +253,9 @@ export default function Profile() {
       </Section>
 
       <Text style={[type.caption, { color: theme.textFaint, marginTop: space.xl, lineHeight: 19 }]}>
-        Nut AI's estimates are AI-generated approximations and may not be accurate. It is not a
+        WorkFit AI's estimates are AI-generated approximations and may not be accurate. It is not a
         medical device and does not diagnose, treat, cure or prevent any condition. Consult a
-        registered dietitian or healthcare provider before making medical decisions.
+        registered dietitian, trainer, or healthcare provider before making medical decisions.
       </Text>
     </ScrollView>
   )

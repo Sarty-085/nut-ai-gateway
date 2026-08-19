@@ -33,10 +33,10 @@ interface Action {
 }
 
 const ACTIONS: Action[] = [
-  { label: 'Log exercise', icon: 'dumbbell', route: '/log-exercise' },
-  { label: 'Saved foods', icon: 'bookmark', route: '/saved-foods' },
+  { label: 'Scan Body & Posture', icon: 'muscle', route: '/body-scan' },
+  { label: 'Scan Food', icon: 'scan', route: '/camera' },
+  { label: 'Log Exercise', icon: 'dumbbell', route: '/log-exercise' },
   { label: 'Food Database', icon: 'search', route: '/food-search' },
-  { label: 'Scan food', icon: 'scan', route: '/camera' },
 ]
 
 export default function TabLayout() {

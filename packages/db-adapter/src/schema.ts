@@ -383,10 +383,66 @@ CREATE TABLE IF NOT EXISTS accuracy_baselines (
   measured_at    INTEGER,
   PRIMARY KEY (stratum, pathway)
 );
+
+CREATE TABLE IF NOT EXISTS body_scans (
+  id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+  scanned_at               INTEGER NOT NULL,
+  local_date               TEXT NOT NULL,
+  photo_uri                TEXT,
+  posture_score            INTEGER,
+  head_neck_status         TEXT,
+  shoulders_status         TEXT,
+  pelvis_status            TEXT,
+  body_fat_min             REAL,
+  body_fat_max             REAL,
+  body_fat_category        TEXT,
+  body_type                TEXT,
+  muscularity_rating       INTEGER,
+  symmetry_score           INTEGER,
+  upper_body_balance       TEXT,
+  core_midsection          TEXT,
+  lower_body_balance       TEXT,
+  tightness_areas_json     TEXT,
+  trainer_summary          TEXT,
+  corrective_exercises_json TEXT,
+  mobility_drills_json     TEXT,
+  raw_payload_json         TEXT,
+  created_at               INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_body_scans_date ON body_scans(local_date);
+`
+
+const MIGRATION_2_SQL = `
+CREATE TABLE IF NOT EXISTS body_scans (
+  id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+  scanned_at               INTEGER NOT NULL,
+  local_date               TEXT NOT NULL,
+  photo_uri                TEXT,
+  posture_score            INTEGER,
+  head_neck_status         TEXT,
+  shoulders_status         TEXT,
+  pelvis_status            TEXT,
+  body_fat_min             REAL,
+  body_fat_max             REAL,
+  body_fat_category        TEXT,
+  body_type                TEXT,
+  muscularity_rating       INTEGER,
+  symmetry_score           INTEGER,
+  upper_body_balance       TEXT,
+  core_midsection          TEXT,
+  lower_body_balance       TEXT,
+  tightness_areas_json     TEXT,
+  trainer_summary          TEXT,
+  corrective_exercises_json TEXT,
+  mobility_drills_json     TEXT,
+  raw_payload_json         TEXT,
+  created_at               INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_body_scans_date ON body_scans(local_date);
 `
 
 /** Current user-schema version. Bump with every migration added below. */
-export const USER_SCHEMA_VERSION = 1
+export const USER_SCHEMA_VERSION = 2
 
 export interface Migration {
   version: number
@@ -400,4 +456,7 @@ export interface Migration {
  * Migration tests run forward from EVERY shipped version, because a user who
  * skipped three releases must land in the same place as one who took all of them.
  */
-export const MIGRATIONS: readonly Migration[] = [{ version: 1, sql: USER_SCHEMA }]
+export const MIGRATIONS: readonly Migration[] = [
+  { version: 1, sql: USER_SCHEMA },
+  { version: 2, sql: MIGRATION_2_SQL },
+]
