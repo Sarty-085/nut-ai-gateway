@@ -36,9 +36,10 @@ interface Action {
 const ACTIONS: Action[] = [
   { label: 'Scan Body & Posture', subtitle: 'Biomechanical alignment & corrective drills', icon: 'muscle', route: '/body-scan' },
   { label: 'Scan Food', subtitle: 'Instant AI meal photo analysis', icon: 'scan', route: '/camera' },
+  { label: 'Food Database', subtitle: 'Search USDA & Indian nutrition database', icon: 'search', route: '/food-search' },
+  { label: 'Saved Meals', subtitle: 'Instant 1-tap logging for favorite foods', icon: 'bowl', route: '/saved-foods' },
   { label: 'Log Weight', subtitle: 'Record weight & recalibrate targets', icon: 'scale', route: '/log-weight' },
   { label: 'Log Exercise', subtitle: 'Track workout minutes & calories burned', icon: 'dumbbell', route: '/log-exercise' },
-  { label: 'Food Database', subtitle: 'Search USDA & Indian nutrition database', icon: 'search', route: '/food-search' },
 ]
 
 export default function TabLayout() {

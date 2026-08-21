@@ -8,6 +8,7 @@ import { nutritionCorpusInfo, openNutritionDb } from '../src/db/expo-adapter'
 import { db } from '../src/data/repo'
 import { resolveSelection } from '../src/data/food-search-select'
 import { logManualFood } from '../src/data/manual-food'
+import { Icon } from '../src/components/Icon'
 import { useTheme } from '../src/theme/ThemeProvider'
 import { MIN_TAP_TARGET, radius, space, type } from '../src/theme/tokens'
 
@@ -125,16 +126,26 @@ export default function FoodSearch() {
         {corpusLine}
       </Text>
 
-      <TextInput
-        accessibilityLabel="Search foods"
-        placeholder="Search — try “chicken breast”"
-        placeholderTextColor={theme.textFaint}
-        value={query}
-        onChangeText={setQuery}
-        autoCorrect={false}
-        autoCapitalize="none"
-        style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bgSunken }]}
-      />
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: space.sm }}>
+        <TextInput
+          accessibilityLabel="Search foods"
+          placeholder="Search — try “chicken breast” or “dal”"
+          placeholderTextColor={theme.textFaint}
+          value={query}
+          onChangeText={setQuery}
+          autoCorrect={false}
+          autoCapitalize="none"
+          style={[styles.input, { flex: 1, color: theme.text, borderColor: theme.border, backgroundColor: theme.bgSunken }]}
+        />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Scan Barcode"
+          onPress={() => router.push('/camera' as never)}
+          style={[styles.barcodeBtn, { backgroundColor: theme.bgSunken, borderColor: theme.border }]}
+        >
+          <Icon name="barcode" size={20} color={theme.protein} />
+        </Pressable>
+      </View>
 
       {busy && <ActivityIndicator style={{ marginTop: space.lg }} color={theme.textFaint} />}
 
@@ -186,13 +197,20 @@ export default function FoodSearch() {
 
 const styles = StyleSheet.create({
   input: {
-    marginTop: space.lg,
     paddingHorizontal: space.lg,
     paddingVertical: space.md,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     fontSize: 16,
     minHeight: 48,
+  },
+  barcodeBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   row: {
     flexDirection: 'row',

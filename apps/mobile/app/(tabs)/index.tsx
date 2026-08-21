@@ -2,10 +2,12 @@ import { router, useFocusEffect } from 'expo-router'
 import { useCallback, useMemo, useState } from 'react'
 import {
   Alert,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   useWindowDimensions,
   View,
   type NativeScrollEvent,
@@ -13,16 +15,19 @@ import {
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Svg, { Circle } from 'react-native-svg'
+import { healthScore } from '@nutai/totals'
 import { Icon, type IconName } from '../../src/components/Icon'
 import {
   activeDays,
   currentGoal,
   dayExerciseKcal,
   dayMeals,
+  daySteps,
   dayTotals,
   dayWaterMl,
   deleteMeal,
   localDate,
+  logSteps,
   logWater,
   runAdaptive,
   type AdaptiveOutcome,
@@ -75,6 +80,11 @@ export default function Home() {
   const [offset, setOffset] = useState(0)
   const [page, setPage] = useState(0)
   const [waterMl, setWaterMl] = useState(0)
+  const [stepsCount, setStepsCount] = useState(0)
+  const [customWaterOpen, setCustomWaterOpen] = useState(false)
+  const [customWaterText, setCustomWaterText] = useState('')
+  const [customStepsOpen, setCustomStepsOpen] = useState(false)
+  const [customStepsText, setCustomStepsText] = useState('')
   const [exerciseKcalBurned, setExerciseKcalBurned] = useState(0)
   const [streakCount, setStreakCount] = useState(0)
   const [meals, setMeals] = useState<DayMealSummary[]>([])
@@ -89,10 +99,11 @@ export default function Home() {
         // changed is the one rendered. Its own gates decide whether it may act.
         const outcome = await runAdaptive(Date.now())
         const dateStr = localDate(selected)
-        const [g, t, w, exKcal, allDays, mList] = await Promise.all([
+        const [g, t, w, st, exKcal, allDays, mList] = await Promise.all([
           currentGoal(),
           dayTotals(dateStr),
           dayWaterMl(dateStr),
+          daySteps(dateStr),
           dayExerciseKcal(dateStr),
           activeDays(),
           dayMeals(dateStr),
@@ -102,6 +113,7 @@ export default function Home() {
         setGoal(g)
         setTotals(t)
         setWaterMl(w)
+        setStepsCount(st)
         setExerciseKcalBurned(exKcal)
         setStreakCount(countStreak(allDays))
         setMeals(mList)
@@ -130,10 +142,21 @@ export default function Home() {
   }
 
   const handleAddWater = async (amount: number) => {
+    if (amount <= 0) return
     await logWater(amount, selected)
     const dateStr = localDate(selected)
     const updated = await dayWaterMl(dateStr)
     setWaterMl(updated)
+    const allDays = await activeDays()
+    setStreakCount(countStreak(allDays))
+  }
+
+  const handleAddSteps = async (amount: number) => {
+    if (amount <= 0) return
+    await logSteps(amount, selected)
+    const dateStr = localDate(selected)
+    const updated = await daySteps(dateStr)
+    setStepsCount(updated)
     const allDays = await activeDays()
     setStreakCount(countStreak(allDays))
   }
@@ -203,44 +226,97 @@ export default function Home() {
 
         {/* Page 2 — health score */}
         <View style={{ width, paddingHorizontal: space.lg }}>
-          <View style={[styles.card, { backgroundColor: theme.bgElevated, borderColor: theme.border }]}>
-            <View style={styles.spread}>
-              <Text style={[type.heading, { color: theme.text }]}>Health Score</Text>
-              <Text style={[type.heading, { color: theme.textMuted }]}>N/A</Text>
-            </View>
-            <View style={[styles.scoreTrack, { backgroundColor: theme.ringTrack }]} />
-            <Text style={[type.caption, { color: theme.textMuted, marginTop: space.md, lineHeight: 19 }]}>
-              Log a few foods to generate today's score. Unlike the app we're replacing, the
-              formula is published and readable — it is arithmetic over what you logged, not an
-              opaque "AI" number.
-            </Text>
-          </View>
+          {(() => {
+            const hs = totals.kcal >= 30 ? healthScore({
+              kcal: totals.kcal,
+              protein_g: totals.protein_g,
+              fat_g: totals.fat_g,
+              carbs_g: totals.carbs_g,
+              fiber_g: totals.fiber_g,
+              sugar_g: totals.sugar_g,
+              sodium_mg: totals.sodium_mg,
+            }, totals.totalGrams) : null
+
+            const score = hs?.score ?? null
+            const pctScore = score != null ? score / 10 : 0
+            const scoreColor = score != null ? (score >= 7 ? theme.affirm : score >= 4 ? theme.carbs : theme.safety) : theme.textMuted
+
+            return (
+              <View style={[styles.card, { backgroundColor: theme.bgElevated, borderColor: theme.border }]}>
+                <View style={styles.spread}>
+                  <View>
+                    <Text style={[type.heading, { color: theme.text }]}>Health Score</Text>
+                    <Text style={[type.caption, { color: theme.textMuted, marginTop: 2 }]}>
+                      Dietary density & macronutrient quality
+                    </Text>
+                  </View>
+                  <Text style={[type.heading, { color: scoreColor, fontSize: 24 }]}>
+                    {score != null ? `${score}/10` : 'N/A'}
+                  </Text>
+                </View>
+
+                <View style={[styles.scoreTrack, { backgroundColor: theme.ringTrack, marginTop: space.md, height: 8, borderRadius: 4 }]}>
+                  <View
+                    style={{
+                      width: `${pctScore * 100}%`,
+                      height: 8,
+                      borderRadius: 4,
+                      backgroundColor: scoreColor,
+                    }}
+                  />
+                </View>
+
+                {hs && hs.reasons.length > 0 ? (
+                  <View style={{ marginTop: space.md, gap: 6 }}>
+                    {hs.reasons.map((r, idx) => (
+                      <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Text style={{ color: scoreColor, fontSize: 13 }}>✓</Text>
+                        <Text style={[type.caption, { color: theme.text, flex: 1 }]}>{r}</Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : (
+                  <Text style={[type.caption, { color: theme.textMuted, marginTop: space.md, lineHeight: 19 }]}>
+                    Log your meals today to generate your nutritional quality score. Derived deterministically from protein density, fiber, free sugar, and sodium.
+                  </Text>
+                )}
+              </View>
+            )
+          })()}
         </View>
 
         {/* Page 3 — activity and water */}
         <View style={{ width, paddingHorizontal: space.lg }}>
           <View style={{ flexDirection: 'row', gap: space.md }}>
-            <View style={[styles.card, { flex: 1, backgroundColor: theme.bgElevated, borderColor: theme.border }]}>
-              <Text style={[type.caption, { color: theme.textMuted }]}>Steps</Text>
+            <Pressable
+              onPress={() => setCustomStepsOpen(true)}
+              style={[styles.card, { flex: 1, backgroundColor: theme.bgElevated, borderColor: theme.border }]}
+            >
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text style={[type.caption, { color: theme.textMuted }]}>Steps</Text>
+                <Text style={[type.micro, { color: theme.protein, fontWeight: '700' }]}>+ Log</Text>
+              </View>
               <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
-                <Text style={[styles.mid, { color: theme.text }]}>—</Text>
-                <Text style={[type.caption, { color: theme.textFaint }]}>/10,000</Text>
+                <Text style={[styles.mid, { color: theme.text }]}>
+                  {stepsCount > 0 ? stepsCount.toLocaleString() : '0'}
+                </Text>
+                <Text style={[type.caption, { color: theme.textFaint }]}>/10k</Text>
               </View>
               <View style={{ alignItems: 'center', marginTop: space.md }}>
-                <Ring pct={0} over={false} size={92} stroke={9}>
-                  <Icon name="steps" size={22} color={theme.textMuted} />
+                <Ring pct={Math.min(1, stepsCount / 10000)} over={stepsCount > 10000} size={92} stroke={9}>
+                  <Icon name="steps" size={22} color={theme.protein} />
                 </Ring>
               </View>
-              <Text style={[type.micro, { color: theme.textFaint, marginTop: space.sm }]}>
-                Sensor active
+              <Text style={[type.micro, { color: theme.protein, textAlign: 'center', marginTop: space.sm }]}>
+                {Math.round((stepsCount / 10000) * 100)}% daily goal
               </Text>
-            </View>
+            </Pressable>
 
             <View style={[styles.card, { flex: 1, backgroundColor: theme.bgElevated, borderColor: theme.border }]}>
               <Text style={[type.caption, { color: theme.textMuted }]}>Calories burned</Text>
               <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
                 <Text style={[styles.mid, { color: theme.text }]}>
-                  {exerciseKcalBurned > 0 ? exerciseKcalBurned : '—'}
+                  {exerciseKcalBurned > 0 ? exerciseKcalBurned : '0'}
                 </Text>
                 <Text style={[type.caption, { color: theme.textFaint }]}>kcal</Text>
               </View>
@@ -265,18 +341,24 @@ export default function Home() {
                   </Text>
                 </View>
               </View>
-              <View style={{ flexDirection: 'row', gap: 6 }}>
+              <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
                 <Pressable
                   onPress={() => handleAddWater(250)}
                   style={[styles.ghost, { borderColor: theme.border, paddingHorizontal: 8, paddingVertical: 4 }]}
                 >
-                  <Text style={[type.label, { color: theme.protein, fontSize: 12 }]}>+250 ml</Text>
+                  <Text style={[type.label, { color: theme.protein, fontSize: 12 }]}>+250ml</Text>
                 </Pressable>
                 <Pressable
                   onPress={() => handleAddWater(500)}
                   style={[styles.ghost, { borderColor: theme.border, paddingHorizontal: 8, paddingVertical: 4 }]}
                 >
-                  <Text style={[type.label, { color: theme.protein, fontSize: 12 }]}>+500 ml</Text>
+                  <Text style={[type.label, { color: theme.protein, fontSize: 12 }]}>+500ml</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setCustomWaterOpen(true)}
+                  style={[styles.ghost, { borderColor: theme.protein, paddingHorizontal: 8, paddingVertical: 4 }]}
+                >
+                  <Text style={[type.label, { color: theme.protein, fontSize: 12, fontWeight: '700' }]}>+Custom</Text>
                 </Pressable>
               </View>
             </View>
@@ -403,6 +485,109 @@ export default function Home() {
           </View>
         )}
       </View>
+
+      {/* Custom Water Dialog */}
+      <Modal visible={customWaterOpen} transparent animationType="fade" onRequestClose={() => setCustomWaterOpen(false)}>
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalCard, { backgroundColor: theme.bgElevated, borderColor: theme.border }]}>
+            <Text style={[type.heading, { color: theme.text }]}>Log Water Intake</Text>
+            <Text style={[type.caption, { color: theme.textMuted, marginTop: 4 }]}>
+              Enter amount of water in milliliters (ml)
+            </Text>
+            <TextInput
+              keyboardType="number-pad"
+              placeholder="e.g. 750"
+              placeholderTextColor={theme.textFaint}
+              value={customWaterText}
+              onChangeText={setCustomWaterText}
+              autoFocus
+              style={[styles.modalInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bgSunken }]}
+            />
+            <View style={{ flexDirection: 'row', gap: space.sm, marginTop: space.lg }}>
+              <Pressable
+                onPress={() => { setCustomWaterOpen(false); setCustomWaterText('') }}
+                style={[styles.modalBtn, { flex: 1, backgroundColor: theme.bgSunken }]}
+              >
+                <Text style={[type.label, { color: theme.textMuted }]}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  const val = Number.parseInt(customWaterText, 10)
+                  if (Number.isFinite(val) && val > 0) {
+                    void handleAddWater(val)
+                  }
+                  setCustomWaterOpen(false)
+                  setCustomWaterText('')
+                }}
+                style={[styles.modalBtn, { flex: 1, backgroundColor: theme.protein }]}
+              >
+                <Text style={[type.label, { color: '#000', fontWeight: '700' }]}>Add Water</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Custom Steps Dialog */}
+      <Modal visible={customStepsOpen} transparent animationType="fade" onRequestClose={() => setCustomStepsOpen(false)}>
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalCard, { backgroundColor: theme.bgElevated, borderColor: theme.border }]}>
+            <Text style={[type.heading, { color: theme.text }]}>Log Step Count</Text>
+            <Text style={[type.caption, { color: theme.textMuted, marginTop: 4 }]}>
+              Add steps walked or run today
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 6, marginVertical: space.md, flexWrap: 'wrap' }}>
+              <Pressable
+                onPress={() => setCustomStepsText('1000')}
+                style={[styles.ghost, { borderColor: theme.border, paddingHorizontal: 10, paddingVertical: 4 }]}
+              >
+                <Text style={[type.label, { color: theme.protein, fontSize: 12 }]}>+1,000</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setCustomStepsText('2500')}
+                style={[styles.ghost, { borderColor: theme.border, paddingHorizontal: 10, paddingVertical: 4 }]}
+              >
+                <Text style={[type.label, { color: theme.protein, fontSize: 12 }]}>+2,500</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setCustomStepsText('5000')}
+                style={[styles.ghost, { borderColor: theme.border, paddingHorizontal: 10, paddingVertical: 4 }]}
+              >
+                <Text style={[type.label, { color: theme.protein, fontSize: 12 }]}>+5,000</Text>
+              </Pressable>
+            </View>
+            <TextInput
+              keyboardType="number-pad"
+              placeholder="e.g. 2000"
+              placeholderTextColor={theme.textFaint}
+              value={customStepsText}
+              onChangeText={setCustomStepsText}
+              style={[styles.modalInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bgSunken }]}
+            />
+            <View style={{ flexDirection: 'row', gap: space.sm, marginTop: space.lg }}>
+              <Pressable
+                onPress={() => { setCustomStepsOpen(false); setCustomStepsText('') }}
+                style={[styles.modalBtn, { flex: 1, backgroundColor: theme.bgSunken }]}
+              >
+                <Text style={[type.label, { color: theme.textMuted }]}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  const val = Number.parseInt(customStepsText, 10)
+                  if (Number.isFinite(val) && val > 0) {
+                    void handleAddSteps(val)
+                  }
+                  setCustomStepsOpen(false)
+                  setCustomStepsText('')
+                }}
+                style={[styles.modalBtn, { flex: 1, backgroundColor: theme.protein }]}
+              >
+                <Text style={[type.label, { color: '#000', fontWeight: '700' }]}>Add Steps</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   )
 }
@@ -596,4 +781,33 @@ const styles = StyleSheet.create({
     padding: space.lg, borderRadius: radius.lg,
   },
   skeleton: { height: 8, borderRadius: 4 },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: space.lg,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 380,
+    borderRadius: radius.xl,
+    padding: space.xl,
+    borderWidth: 1,
+  },
+  modalInput: {
+    height: 52,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    paddingHorizontal: space.md,
+    fontSize: 18,
+    fontWeight: '700',
+    marginTop: space.md,
+  },
+  modalBtn: {
+    height: 48,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 })

@@ -43,15 +43,25 @@ type Step =
   | { kind: 'manual' }
 
 const MENU: Array<{ step: Step; icon: IconName; title: string; sub: string }> = [
-  { step: { kind: 'intensity', exercise: 'run' }, icon: 'run', title: 'Run', sub: 'Running, jogging, sprinting, etc.' },
-  { step: { kind: 'intensity', exercise: 'weights' }, icon: 'dumbbell', title: 'Weight lifting', sub: 'Machines, free weights, etc.' },
-  { step: { kind: 'describe' }, icon: 'pencil', title: 'Describe', sub: 'Write your workout in text' },
-  { step: { kind: 'manual' }, icon: 'flame', title: 'Manual', sub: 'Enter exactly how many calories you burned' },
+  { step: { kind: 'intensity', exercise: 'run' }, icon: 'run', title: 'Running / Jogging', sub: 'Treadmill, outdoor runs, sprints' },
+  { step: { kind: 'intensity', exercise: 'weights' }, icon: 'dumbbell', title: 'Weight Lifting', sub: 'Strength training, dumbbells, machines' },
+  { step: { kind: 'intensity', exercise: 'walk' }, icon: 'steps', title: 'Walking / Hiking', sub: 'Brisk walk, outdoor steps, uphill' },
+  { step: { kind: 'intensity', exercise: 'cycle' }, icon: 'target', title: 'Cycling / Spin', sub: 'Stationary bike, road cycling' },
+  { step: { kind: 'intensity', exercise: 'swim' }, icon: 'water', title: 'Swimming', sub: 'Laps, freestyle, pool training' },
+  { step: { kind: 'intensity', exercise: 'hiit' }, icon: 'flame', title: 'HIIT / Circuit', sub: 'High intensity interval & bodyweight' },
+  { step: { kind: 'intensity', exercise: 'yoga' }, icon: 'muscle', title: 'Yoga / Stretching', sub: 'Vinyasa, Hatha, mobility work' },
+  { step: { kind: 'describe' }, icon: 'pencil', title: 'Describe Workout', sub: 'AI parses any workout or sport in text' },
+  { step: { kind: 'manual' }, icon: 'flame', title: 'Manual Entry', sub: 'Directly enter calories burned' },
 ]
 
 const KIND_META: Record<ExerciseKind, { icon: IconName; title: string }> = {
-  run: { icon: 'run', title: 'Run' },
+  run: { icon: 'run', title: 'Running' },
   weights: { icon: 'dumbbell', title: 'Weight lifting' },
+  walk: { icon: 'steps', title: 'Walking' },
+  cycle: { icon: 'target', title: 'Cycling' },
+  swim: { icon: 'water', title: 'Swimming' },
+  hiit: { icon: 'flame', title: 'HIIT' },
+  yoga: { icon: 'muscle', title: 'Yoga & Mobility' },
 }
 
 const DURATIONS = [15, 30, 60, 90] as const

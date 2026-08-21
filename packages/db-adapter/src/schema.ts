@@ -254,11 +254,23 @@ CREATE TABLE IF NOT EXISTS log_items (
 CREATE INDEX IF NOT EXISTS idx_log_items_meal ON log_items(meal_id);
 
 CREATE TABLE IF NOT EXISTS weight_entries (
-  id         INTEGER PRIMARY KEY,
-  local_date TEXT NOT NULL UNIQUE,
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  local_date TEXT NOT NULL,
   weight_kg  REAL NOT NULL,
   logged_at  INTEGER NOT NULL
 );
+CREATE INDEX IF NOT EXISTS idx_weight_entries_date ON weight_entries(local_date);
+CREATE INDEX IF NOT EXISTS idx_weight_entries_logged ON weight_entries(logged_at);
+
+CREATE TABLE IF NOT EXISTS step_entries (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  local_date TEXT NOT NULL,
+  steps      INTEGER NOT NULL,
+  source     TEXT NOT NULL DEFAULT 'manual',
+  logged_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_step_entries_date ON step_entries(local_date);
+CREATE INDEX IF NOT EXISTS idx_step_entries_logged ON step_entries(logged_at);
 
 CREATE TABLE IF NOT EXISTS water_entries (
   id         INTEGER PRIMARY KEY,
@@ -456,8 +468,20 @@ CREATE INDEX IF NOT EXISTS idx_weight_entries_date ON weight_entries(local_date)
 CREATE INDEX IF NOT EXISTS idx_weight_entries_logged ON weight_entries(logged_at);
 `
 
+const MIGRATION_4_SQL = `
+CREATE TABLE IF NOT EXISTS step_entries (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  local_date TEXT NOT NULL,
+  steps      INTEGER NOT NULL,
+  source     TEXT NOT NULL DEFAULT 'manual',
+  logged_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_step_entries_date ON step_entries(local_date);
+CREATE INDEX IF NOT EXISTS idx_step_entries_logged ON step_entries(logged_at);
+`
+
 /** Current user-schema version. Bump with every migration added below. */
-export const USER_SCHEMA_VERSION = 3
+export const USER_SCHEMA_VERSION = 4
 
 export interface Migration {
   version: number
@@ -475,4 +499,5 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 1, sql: USER_SCHEMA },
   { version: 2, sql: MIGRATION_2_SQL },
   { version: 3, sql: MIGRATION_3_SQL },
+  { version: 4, sql: MIGRATION_4_SQL },
 ]

@@ -184,6 +184,10 @@ export interface DayTotals {
   protein_g: number
   fat_g: number
   carbs_g: number
+  fiber_g: number
+  sugar_g: number
+  sodium_mg: number
+  totalGrams: number
   mealCount: number
   distinctSlots: number
   pendingCount: number
@@ -203,6 +207,10 @@ export async function dayTotals(date: string): Promise<DayTotals> {
     p: number | null
     f: number | null
     c: number | null
+    fiber: number | null
+    sugar: number | null
+    sodium: number | null
+    total_g: number | null
     meals: number | null
     slots: number | null
   }>(
@@ -211,6 +219,10 @@ export async function dayTotals(date: string): Promise<DayTotals> {
        SUM(li.snap_protein_g   * li.grams / 100.0 * m.portion_eaten_fraction) AS p,
        SUM(li.snap_fat_g       * li.grams / 100.0 * m.portion_eaten_fraction) AS f,
        SUM(li.snap_carb_g      * li.grams / 100.0 * m.portion_eaten_fraction) AS c,
+       SUM(COALESCE(li.snap_fiber_g, 0) * li.grams / 100.0 * m.portion_eaten_fraction) AS fiber,
+       SUM(COALESCE(li.snap_sugar_g, 0) * li.grams / 100.0 * m.portion_eaten_fraction) AS sugar,
+       SUM(COALESCE(li.snap_sodium_mg, 0) * li.grams / 100.0 * m.portion_eaten_fraction) AS sodium,
+       SUM(li.grams * m.portion_eaten_fraction) AS total_g,
        COUNT(DISTINCT m.id)        AS meals,
        COUNT(DISTINCT m.meal_slot) AS slots
      FROM meals m
@@ -230,6 +242,10 @@ export async function dayTotals(date: string): Promise<DayTotals> {
     protein_g: row?.p ?? 0,
     fat_g: row?.f ?? 0,
     carbs_g: row?.c ?? 0,
+    fiber_g: row?.fiber ?? 0,
+    sugar_g: row?.sugar ?? 0,
+    sodium_mg: row?.sodium ?? 0,
+    totalGrams: row?.total_g ?? 0,
     mealCount: row?.meals ?? 0,
     distinctSlots: row?.slots ?? 0,
     // Pending scans contribute ZERO calories. A number that silently grows later
@@ -660,6 +676,90 @@ export async function dayWaterMl(date: string): Promise<number> {
   return row?.total ?? 0
 }
 
+export async function daySteps(date: string): Promise<number> {
+  const h = await db()
+  const row = await h.get<{ total: number }>(
+    'SELECT COALESCE(SUM(steps), 0) as total FROM step_entries WHERE local_date = ?',
+    [date],
+  )
+  return row?.total ?? 0
+}
+
+export async function logSteps(steps: number, timestamp: number = Date.now(), source: string = 'manual'): Promise<void> {
+  const h = await db()
+  const date = localDate(timestamp)
+  await h.run(
+    'INSERT INTO step_entries (local_date, steps, source, logged_at) VALUES (?,?,?,?)',
+    [date, steps, source, timestamp],
+  )
+}
+
+export async function logSavedMeal(savedMealId: number, now: number = Date.now()): Promise<number> {
+  const h = await db()
+  const saved = await h.get<{ id: number; name: string; items_json: string }>(
+    'SELECT id, name, items_json FROM saved_meals WHERE id = ?',
+    [savedMealId],
+  )
+  if (!saved) throw new Error('Saved meal not found')
+
+  const items = JSON.parse(saved.items_json)
+  const date = localDate(now)
+
+  return h.transaction(async (tx) => {
+    const meal = await tx.run(
+      `INSERT INTO meals (logged_at, local_date, meal_slot, photo_uri, portion_eaten_fraction,
+                          analysis_status, engine_id, prompt_version, schema_version,
+                          clamp_flags_json, created_at)
+       VALUES (?,?,?,?,?,'complete','saved_meal',NULL,NULL,'[]',?)`,
+      [now, date, slotFor(now), null, 1.0, now],
+    )
+    const mealId = Number(meal.lastInsertRowId)
+
+    let sort = 0
+    for (const it of items) {
+      await tx.run(
+        `INSERT INTO log_items (meal_id, matched_food_id, matched_food_source, raw_model_label,
+                                display_name, grams, gram_pathway, portion_source,
+                                snap_energy_kcal, snap_protein_g, snap_fat_g, snap_carb_g,
+                                snap_fiber_g, snap_sugar_g, snap_sodium_mg,
+                                is_estimate, macros_user_edited, band_half_pct,
+                                assumptions_json, sort_order, logged_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [
+          mealId,
+          it.matched_food_id ?? null,
+          it.matched_food_source ?? 'saved',
+          it.raw_model_label ?? null,
+          it.display_name,
+          it.grams,
+          it.gram_pathway ?? 'manual',
+          it.portion_source ?? 'saved',
+          it.snap_energy_kcal,
+          it.snap_protein_g,
+          it.snap_fat_g,
+          it.snap_carb_g,
+          it.snap_fiber_g ?? null,
+          it.snap_sugar_g ?? null,
+          it.snap_sodium_mg ?? null,
+          it.is_estimate ?? 0,
+          it.macros_user_edited ?? 0,
+          it.band_half_pct ?? null,
+          it.assumptions_json ?? '[]',
+          sort++,
+          now,
+        ],
+      )
+    }
+
+    await tx.run(
+      'UPDATE saved_meals SET use_count = use_count + 1, last_used_at = ? WHERE id = ?',
+      [now, savedMealId],
+    )
+
+    return mealId
+  })
+}
+
 export async function dayExerciseKcal(date: string): Promise<number> {
   const h = await db()
   const row = await h.get<{ total: number }>(
@@ -680,6 +780,8 @@ export async function activeDays(): Promise<string[]> {
        SELECT local_date FROM water_entries
        UNION
        SELECT local_date FROM exercise_entries
+       UNION
+       SELECT local_date FROM step_entries
        UNION
        SELECT local_date FROM body_scans
      ) ORDER BY local_date DESC`,

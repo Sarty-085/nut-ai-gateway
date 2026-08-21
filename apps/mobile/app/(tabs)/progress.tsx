@@ -1,5 +1,5 @@
 import { router, useFocusEffect } from 'expo-router'
-import { useCallback, useMemo, useState } from 'react'
+import React, { useCallback, useMemo, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Svg, { Circle, Line as SvgLine, Path, Rect, Text as SvgText } from 'react-native-svg'
@@ -234,7 +234,7 @@ export default function Progress() {
             No weigh-ins yet. Log your first weight to begin tracking progress.
           </Text>
         ) : (
-          <WeightChart trend={visible.length > 0 ? visible : trend} />
+          <WeightChart points={points} trend={visible.length > 0 ? visible : trend} />
         )}
 
         <View style={[styles.segment, { backgroundColor: theme.bgElevated }]}>
@@ -402,31 +402,36 @@ function ChangeRow({ label, lbs }: { label: string; lbs: number | null }) {
   )
 }
 
-function WeightChart({ trend }: { trend: TrendPoint[] }) {
+function WeightChart({ points, trend }: { points: Array<WeightPoint & { loggedAt?: number }>; trend: TrendPoint[] }) {
   const theme = useTheme()
-  const W = 300
-  const H = 170
+  const W = 320
+  const H = 180
 
-  if (trend.length === 0) return null
+  if (points.length === 0 && trend.length === 0) return null
 
-  const values = trend.flatMap((p) => [p.trendKg, ...(p.rawKg != null ? [p.rawKg] : [])])
-  const min = Math.min(...values)
-  const max = Math.max(...values)
+  // Extract all relevant weight values to calibrate scale
+  const allKg = [
+    ...points.map((p) => p.weightKg),
+    ...trend.map((t) => t.trendKg),
+    ...trend.flatMap((t) => (t.rawKg != null ? [t.rawKg] : [])),
+  ]
+
+  const min = Math.min(...allKg)
+  const max = Math.max(...allKg)
   const span = max - min < 0.5 ? 1 : max - min
-  const pad = span * 0.2
+  const pad = span * 0.18
 
-  const x = (i: number) => (trend.length <= 1 ? W / 2 : (i / (trend.length - 1)) * (W - 50) + 40)
-  const y = (kg: number) => H - 24 - ((kg - min + pad) / (span + pad * 2)) * (H - 48)
-
+  const y = (kg: number) => H - 30 - ((kg - min + pad) / (span + pad * 2)) * (H - 55)
   const gridVals = [min + span, min + span / 2, min]
 
-  if (trend.length === 1) {
-    const singleKg = trend[0].trendKg
+  // CASE 1: Only 1 weigh-in point recorded
+  if (points.length <= 1) {
+    const singleKg = points[0]?.weightKg ?? trend[0]?.trendKg ?? 70
     const cy = y(singleKg)
     return (
       <Svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} style={{ marginTop: space.md }}>
         {gridVals.map((v, i) => (
-          <SvgLine key={i} x1={40} y1={y(v)} x2={W - 10} y2={y(v)} stroke={theme.border} strokeWidth="1" />
+          <SvgLine key={i} x1={42} y1={y(v)} x2={W - 12} y2={y(v)} stroke={theme.border} strokeWidth="1" strokeDasharray="2 2" />
         ))}
         {gridVals.map((v, i) => (
           <SvgText key={`t${i}`} x={2} y={y(v) + 4} fontSize="10" fill={theme.textFaint}>
@@ -434,38 +439,74 @@ function WeightChart({ trend }: { trend: TrendPoint[] }) {
           </SvgText>
         ))}
         {/* Baseline guideline */}
-        <SvgLine x1={40} y1={cy} x2={W - 10} y2={cy} stroke={theme.protein} strokeWidth="2" strokeDasharray="4 4" opacity="0.6" />
+        <SvgLine x1={42} y1={cy} x2={W - 12} y2={cy} stroke={theme.protein} strokeWidth="2" strokeDasharray="4 4" opacity="0.5" />
         {/* Outer Halo */}
-        <Circle cx={W / 2} cy={cy} r="10" stroke={theme.protein} strokeWidth="2" opacity="0.3" />
+        <Circle cx={W / 2} cy={cy} r="12" stroke={theme.protein} strokeWidth="2" opacity="0.25" fill={theme.protein} fillOpacity="0.1" />
         {/* Main Point */}
         <Circle cx={W / 2} cy={cy} r="5" fill={theme.protein} />
         {/* Label */}
-        <SvgText x={W / 2} y={cy - 12} fontSize="12" fontWeight="700" fill={theme.text} textAnchor="middle">
+        <SvgText x={W / 2} y={cy - 16} fontSize="12" fontWeight="700" fill={theme.text} textAnchor="middle">
           {(singleKg * LB_PER_KG).toFixed(1)} lbs
         </SvgText>
       </Svg>
     )
   }
 
-  let d = ''
-  trend.forEach((p, i) => {
-    d += `${i === 0 ? 'M' : 'L'} ${x(i)} ${y(p.trendKg)} `
+  // CASE 2: Multiple weigh-in points (intra-day or multi-day)
+  // Plot individual weigh-in points in sequence
+  const xPt = (i: number) => (i / (points.length - 1)) * (W - 65) + 45
+
+  let ptPath = ''
+  points.forEach((p, i) => {
+    ptPath += `${i === 0 ? 'M' : 'L'} ${xPt(i).toFixed(1)} ${y(p.weightKg).toFixed(1)} `
   })
+
+  // Also build trend line path if multi-day trend points exist
+  let trendPath = ''
+  if (trend.length > 1) {
+    const xTr = (i: number) => (i / (trend.length - 1)) * (W - 65) + 45
+    trend.forEach((t, i) => {
+      trendPath += `${i === 0 ? 'M' : 'L'} ${xTr(i).toFixed(1)} ${y(t.trendKg).toFixed(1)} `
+    })
+  }
 
   return (
     <Svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} style={{ marginTop: space.md }}>
+      {/* Grid Lines & Labels */}
       {gridVals.map((v, i) => (
-        <SvgLine key={i} x1={40} y1={y(v)} x2={W - 10} y2={y(v)} stroke={theme.border} strokeWidth="1" />
+        <SvgLine key={i} x1={42} y1={y(v)} x2={W - 12} y2={y(v)} stroke={theme.border} strokeWidth="1" strokeDasharray="2 2" />
       ))}
       {gridVals.map((v, i) => (
         <SvgText key={`t${i}`} x={2} y={y(v) + 4} fontSize="10" fill={theme.textFaint}>
           {(v * LB_PER_KG).toFixed(0)}
         </SvgText>
       ))}
-      {trend.map((p, i) =>
-        p.rawKg != null ? <Circle key={i} cx={x(i)} cy={y(p.rawKg)} r="3.5" fill={theme.textFaint} /> : null,
-      )}
-      <Path d={d} stroke={theme.text} strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+
+      {/* Trend line (if multi-day) */}
+      {trendPath ? (
+        <Path d={trendPath} stroke={theme.protein} strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round" opacity="0.85" />
+      ) : null}
+
+      {/* Raw weigh-in connection path */}
+      <Path d={ptPath} stroke={trendPath ? theme.textFaint : theme.protein} strokeWidth={trendPath ? "1.5" : "2.5"} strokeDasharray={trendPath ? "3 3" : undefined} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+
+      {/* Raw weigh-in point markers with halos */}
+      {points.map((p, i) => {
+        const cx = xPt(i)
+        const cy = y(p.weightKg)
+        const isLatest = i === points.length - 1
+        return (
+          <React.Fragment key={i}>
+            {isLatest ? (
+              <Circle cx={cx} cy={cy} r="9" stroke={theme.protein} strokeWidth="2" opacity="0.3" fill={theme.protein} fillOpacity="0.1" />
+            ) : null}
+            <Circle cx={cx} cy={cy} r={isLatest ? 4.5 : 3.5} fill={isLatest ? theme.protein : theme.text} />
+            <SvgText x={cx} y={cy - 8} fontSize="9" fontWeight={isLatest ? "700" : "500"} fill={isLatest ? theme.protein : theme.textMuted} textAnchor="middle">
+              {(p.weightKg * LB_PER_KG).toFixed(1)}
+            </SvgText>
+          </React.Fragment>
+        )
+      })}
     </Svg>
   )
 }

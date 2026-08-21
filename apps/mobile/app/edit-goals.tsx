@@ -19,19 +19,23 @@ export default function EditGoals() {
   const [kcal, setKcal] = useState('')
   const [protein, setProtein] = useState('')
   const [fat, setFat] = useState('')
-  const [startLbs, setStartLbs] = useState('')
-  const [goalLbs, setGoalLbs] = useState('')
+  const [isImperial, setIsImperial] = useState(true)
+  const [startWeightInput, setStartWeightInput] = useState('')
+  const [goalWeightInput, setGoalWeightInput] = useState('')
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     let alive = true
     void (async () => {
-      const [g, startW, desiredW] = await Promise.all([
+      const [g, startW, desiredW, units] = await Promise.all([
         currentGoal(),
         setting('goal.startWeightKg', ''),
         setting('goal.desiredWeightKg', ''),
+        setting('units', 'imperial'),
       ])
       if (!alive) return
+      const imperial = units !== 'metric'
+      setIsImperial(imperial)
       if (g) {
         setBase(g)
         setKcal(String(Math.round(g.targetKcal)))
@@ -39,10 +43,12 @@ export default function EditGoals() {
         setFat(String(Math.round(g.fat_g)))
       }
       if (startW) {
-        setStartLbs((Number(startW) * LB_PER_KG).toFixed(1))
+        const kgVal = Number(startW)
+        setStartWeightInput(imperial ? (kgVal * LB_PER_KG).toFixed(1) : kgVal.toFixed(1))
       }
       if (desiredW) {
-        setGoalLbs((Number(desiredW) * LB_PER_KG).toFixed(1))
+        const kgVal = Number(desiredW)
+        setGoalWeightInput(imperial ? (kgVal * LB_PER_KG).toFixed(1) : kgVal.toFixed(1))
       }
     })()
     return () => {
@@ -66,11 +72,13 @@ export default function EditGoals() {
     if (!base || saving || kcalV <= 0 || impossible) return
     setSaving(true)
 
-    if (startLbs && Number(startLbs) > 0) {
-      await putSetting('goal.startWeightKg', String(lbToKg(Number(startLbs))))
+    if (startWeightInput && Number(startWeightInput) > 0) {
+      const kg = isImperial ? lbToKg(Number(startWeightInput)) : Number(startWeightInput)
+      await putSetting('goal.startWeightKg', String(kg))
     }
-    if (goalLbs && Number(goalLbs) > 0) {
-      await putSetting('goal.desiredWeightKg', String(lbToKg(Number(goalLbs))))
+    if (goalWeightInput && Number(goalWeightInput) > 0) {
+      const kg = isImperial ? lbToKg(Number(goalWeightInput)) : Number(goalWeightInput)
+      await putSetting('goal.desiredWeightKg', String(kg))
     }
 
     await overrideTargets(
@@ -84,6 +92,8 @@ export default function EditGoals() {
     router.back()
   }
 
+  const weightUnit = isImperial ? 'lbs' : 'kg'
+
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg, paddingTop: insets.top + space.lg }}>
       <View style={styles.head}>
@@ -95,8 +105,8 @@ export default function EditGoals() {
 
       <ScrollView contentContainerStyle={{ padding: space.lg, paddingBottom: 140 }}>
         <Text style={[type.heading, { color: theme.text, fontSize: 17, marginBottom: space.md }]}>Weight Targets</Text>
-        <Field label="Start Baseline Weight" unit="lbs" value={startLbs} onChange={setStartLbs} />
-        <Field label="Target Goal Weight" unit="lbs" value={goalLbs} onChange={setGoalLbs} />
+        <Field label="Start Baseline Weight" unit={weightUnit} value={startWeightInput} onChange={setStartWeightInput} />
+        <Field label="Target Goal Weight" unit={weightUnit} value={goalWeightInput} onChange={setGoalWeightInput} />
 
         <Text style={[type.heading, { color: theme.text, fontSize: 17, marginTop: space.md, marginBottom: space.md }]}>Nutrition Daily Targets</Text>
         <Field label="Daily Calorie Target" unit="kcal" value={kcal} onChange={setKcal} />

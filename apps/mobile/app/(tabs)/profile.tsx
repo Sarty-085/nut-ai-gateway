@@ -169,6 +169,7 @@ export default function Profile() {
           value={goal ? `${Math.round(goal.protein_g)} / ${Math.round(goal.carbs_g)} / ${Math.round(goal.fat_g)} g` : '—'}
           onPress={() => router.push('/edit-goals' as never)}
         />
+        <Row label="Saved Meals & Recipes" value="View library" onPress={() => router.push('/saved-foods' as never)} />
         <Row label="Log weight" value="" onPress={() => router.push('/log-weight' as never)} />
         <Row label="Diet style" value={diet} />
         <Row
