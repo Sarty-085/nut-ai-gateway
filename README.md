@@ -48,7 +48,7 @@ WorkFit AI unites two state-of-the-art perception engines into a single friction
 
 ```mermaid
 graph TD
-    A[📱 Nut AI Mobile App] -->|HTTPS + Bearer App Token| B[⚡ Private AI Gateway]
+    A[📱 WorkFit AI Mobile App] -->|HTTPS + Bearer App Token| B[⚡ Private AI Gateway]
     
     subgraph Private Gateway Pool
         B --> C{Dynamic Router & Health Tracker}
@@ -60,7 +60,7 @@ graph TD
     B -->|Structured Perception JSON| A
     
     subgraph Deterministic Engine On-Device
-        A --> G[USDA Nutritional SQLite Database]
+        A --> G[USDA & Indian Nutrition SQLite Database]
         A --> H[Gram Weight & Portion Ladder]
         A --> I[Biomechanical Posture & Symmetry Engine]
     end
@@ -134,8 +134,8 @@ npm --prefix apps/mobile run android
 3. In **Environment Variables**, paste your `.env` variables (`APP_TOKENS`, `GOOGLE_API_KEY_1`, etc.).
 4. Click **Deploy Web Service** to get your live HTTPS endpoint (e.g. `https://nut-ai-gateway.onrender.com`).
 
-### Connect in Nut AI Mobile App:
-1. Open **Nut AI** on your phone.
+### Connect in WorkFit AI Mobile App:
+1. Open **WorkFit AI** on your phone.
 2. Navigate to **Profile** > **Private AI Gateway** > **Configure gateway connection**.
 3. Set URL to your Render domain (`https://nut-ai-gateway.onrender.com`) and token to `nuttoken1`.
 
@@ -143,7 +143,7 @@ npm --prefix apps/mobile run android
 
 ## 🧪 Testing & Quality Gates
 
-Nut AI enforces strict quality gates across all 11 monorepo packages:
+WorkFit AI enforces strict quality gates across all 11 monorepo packages:
 
 ```bash
 # Run full suite: ESLint + TypeScript + Vitest (345+ tests) + Node Purity + Data Verification
@@ -159,9 +159,11 @@ npm run check
 
 ## 📦 Production Builds & Releases
 
-Release APKs are available in the repository root and on GitHub Releases:
-- **`nut-ai-v1.0.0.apk`**: Stable baseline with AI Food, Nutrition Label, Barcode, and Receipt scanning.
-- **`nut-ai-body-scan-v1.1.0.apk`**: Latest version featuring the **AI Body & Posture Biomechanical Scan**.
+Release APKs are available on [GitHub Releases](https://github.com/Sarty-085/nut-ai-gateway/releases):
+- **`v1.3.0` (Latest)**: Complete Health Suite, Indian Nutrient Databank (INDB/IFCT), Interactive Biomechanical Exercise Visualizer, Dynamic Weight Recalibration, Step Tracking, and Water Logging.
+- **`v1.2.0`**: Body Scan Persistence, Corrective Drill Previews, and Dark OLED Theme.
+- **`v1.1.0`**: AI Body, Posture & Muscle Symmetry Scan with Real-Time Silhouette Alignment Guides.
+- **`v1.0.0`**: Stable AI Nutrition Tracker with Deterministic USDA Engine.
 
 ---
 
