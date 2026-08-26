@@ -760,6 +760,57 @@ export async function logSavedMeal(savedMealId: number, now: number = Date.now()
   })
 }
 
+export async function saveMealToLibrary(mealId: number, customName?: string): Promise<number> {
+  const h = await db()
+  const meal = await h.get<{ id: number; meal_slot: string }>(
+    'SELECT id, meal_slot FROM meals WHERE id = ?',
+    [mealId],
+  )
+  if (!meal) throw new Error('Meal not found')
+
+  const items = await h.all<{
+    matched_food_id: string | null
+    matched_food_source: string
+    raw_model_label: string | null
+    display_name: string
+    grams: number
+    gram_pathway: string
+    portion_source: string
+    snap_energy_kcal: number
+    snap_protein_g: number
+    snap_fat_g: number
+    snap_carb_g: number
+    snap_fiber_g: number | null
+    snap_sugar_g: number | null
+    snap_sodium_mg: number | null
+    is_estimate: number
+    macros_user_edited: number
+    band_half_pct: number | null
+    assumptions_json: string
+  }>(
+    'SELECT * FROM log_items WHERE meal_id = ? ORDER BY sort_order ASC, id ASC',
+    [mealId],
+  )
+
+  if (items.length === 0) throw new Error('Meal has no ingredients to save')
+
+  const fallbackName = items.map((i) => i.display_name).slice(0, 3).join(', ') || `${meal.meal_slot} Meal`
+  const mealName = customName?.trim() || fallbackName
+  const now = Date.now()
+
+  const res = await h.run(
+    'INSERT INTO saved_meals (name, items_json, use_count, last_used_at, created_at) VALUES (?,?,?,?,?)',
+    [mealName, JSON.stringify(items), 1, now, now],
+  )
+  return Number(res.lastInsertRowId)
+}
+
+export async function deleteSavedMeal(savedMealId: number): Promise<void> {
+  const h = await db()
+  await h.run('DELETE FROM saved_meals WHERE id = ?', [savedMealId])
+}
+
+
 export async function dayExerciseKcal(date: string): Promise<number> {
   const h = await db()
   const row = await h.get<{ total: number }>(

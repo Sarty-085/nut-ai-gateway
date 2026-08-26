@@ -245,7 +245,11 @@ export default function Result() {
                 try {
                   await logMeal(result, phase.meta, phase.photoUri, Date.now())
                   reset()
-                  router.dismissAll()
+                  if (router.canDismiss()) {
+                    router.dismissAll()
+                  } else {
+                    router.replace('/(tabs)' as never)
+                  }
                 } catch {
                   setLogging(false)
                 }

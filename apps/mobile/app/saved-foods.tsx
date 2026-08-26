@@ -2,7 +2,7 @@ import { router, useFocusEffect } from 'expo-router'
 import { useCallback, useState } from 'react'
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { db, logSavedMeal } from '../src/data/repo'
+import { db, deleteSavedMeal, logSavedMeal } from '../src/data/repo'
 import { Icon } from '../src/components/Icon'
 import { useTheme } from '../src/theme/ThemeProvider'
 import { MIN_TAP_TARGET, radius, space, type } from '../src/theme/tokens'
@@ -62,6 +62,21 @@ export default function SavedFoods() {
     }
   }
 
+  const handleDelete = (meal: SavedMeal) => {
+    Alert.alert('Remove Saved Meal', `Delete "${meal.name}" from your saved library?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          await deleteSavedMeal(meal.id)
+          refresh()
+        },
+      },
+    ])
+  }
+
+
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg, paddingTop: insets.top + space.lg }}>
       <View style={styles.head}>
@@ -96,17 +111,28 @@ export default function SavedFoods() {
                   </Text>
                 </View>
 
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={`Log ${m.name} again`}
-                  disabled={loggingId !== null}
-                  onPress={() => handleLogAgain(m)}
-                  style={[styles.logBtn, { backgroundColor: theme.protein }]}
-                >
-                  <Text style={[type.label, { color: '#000', fontWeight: '700' }]}>
-                    {loggingId === m.id ? 'Logging…' : 'Log again'}
-                  </Text>
-                </Pressable>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Log ${m.name} again`}
+                    disabled={loggingId !== null}
+                    onPress={() => handleLogAgain(m)}
+                    style={[styles.logBtn, { backgroundColor: theme.protein }]}
+                  >
+                    <Text style={[type.label, { color: '#000', fontWeight: '700' }]}>
+                      {loggingId === m.id ? 'Logging…' : 'Log again'}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Delete ${m.name}`}
+                    onPress={() => handleDelete(m)}
+                    hitSlop={space.sm}
+                    style={[styles.deleteBtn, { backgroundColor: theme.bgElevated }]}
+                  >
+                    <Icon name="close" size={16} color={theme.textMuted} />
+                  </Pressable>
+                </View>
               </View>
             )
           })
@@ -130,6 +156,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 36,
+  },
+  deleteBtn: {
+    padding: 8,
+    borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: 36,

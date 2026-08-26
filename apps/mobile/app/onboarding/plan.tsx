@@ -52,11 +52,12 @@ export default function PlanScreen() {
   const derivedGoal = inferredGoal(a)
 
   const plan = useMemo(() => {
+    const now = Date.now()
     const body: BodyInputs = {
       sex: a.sex ?? 'unspecified',
       weightKg: a.weightKg ?? 80,
       heightCm: a.heightCm ?? 170,
-      ageYears: ageFrom(a, Date.parse('2026-08-01T00:00:00Z')),
+      ageYears: ageFrom(a, now),
     }
 
     const currentKg = a.weightKg ?? 80
@@ -76,7 +77,7 @@ export default function PlanScreen() {
 
     // Target date from the actual arithmetic, not a flattering guess.
     const weeks = rate > 0 ? deltaLb / rate : 0
-    const date = new Date(Date.parse('2026-08-01T00:00:00Z') + weeks * 7 * 86_400_000)
+    const date = new Date(now + weeks * 7 * 86_400_000)
     const dateLabel = date.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })
 
     return { target, macros, deltaLb, dateLabel, rate }

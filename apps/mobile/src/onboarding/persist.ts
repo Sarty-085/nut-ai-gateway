@@ -75,10 +75,11 @@ export async function persistOnboarding(
     )
 
     if (answers.weightKg != null) {
-      const localDate = new Date(now).toISOString().slice(0, 10)
+      const d = new Date(now)
+      const localDateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
       await tx.run(
         'INSERT OR REPLACE INTO weight_entries (local_date, weight_kg, logged_at) VALUES (?,?,?)',
-        [localDate, answers.weightKg, now],
+        [localDateStr, answers.weightKg, now],
       )
     }
 

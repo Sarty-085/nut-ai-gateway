@@ -30,6 +30,7 @@ import {
   logSteps,
   logWater,
   runAdaptive,
+  saveMealToLibrary,
   type AdaptiveOutcome,
   type CurrentGoal,
   type DayMealSummary,
@@ -140,6 +141,20 @@ export default function Home() {
       },
     ])
   }
+
+  const handleSaveMeal = async (meal: DayMealSummary) => {
+    try {
+      const defaultTitle = meal.items.map((i) => i.displayName).slice(0, 3).join(', ') || `${meal.mealSlot} Meal`
+      await saveMealToLibrary(meal.id, defaultTitle)
+      Alert.alert('✓ Saved to Library', `Saved "${defaultTitle}" to your Saved Meals library for fast 1-tap re-logging.`, [
+        { text: 'OK' },
+        { text: 'View Saved Meals', onPress: () => router.push('/saved-foods' as never) },
+      ])
+    } catch (err: any) {
+      Alert.alert('Save Error', err.message || 'Could not save meal.')
+    }
+  }
+
 
   const handleAddWater = async (amount: number) => {
     if (amount <= 0) return
@@ -450,15 +465,26 @@ export default function Home() {
                         P: {m.totalProtein}g · C: {m.totalCarbs}g · F: {m.totalFat}g
                       </Text>
                     </View>
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="Delete meal"
-                      onPress={() => handleDeleteMeal(m.id)}
-                      hitSlop={space.sm}
-                      style={{ padding: 6, backgroundColor: theme.bgElevated, borderRadius: 8 }}
-                    >
-                      <Icon name="close" size={16} color={theme.textMuted} />
-                    </Pressable>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel="Save meal to library"
+                        onPress={() => handleSaveMeal(m)}
+                        hitSlop={space.sm}
+                        style={{ padding: 6, backgroundColor: theme.bgElevated, borderRadius: 8 }}
+                      >
+                        <Icon name="bookmark" size={16} color={theme.protein} />
+                      </Pressable>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel="Delete meal"
+                        onPress={() => handleDeleteMeal(m.id)}
+                        hitSlop={space.sm}
+                        style={{ padding: 6, backgroundColor: theme.bgElevated, borderRadius: 8 }}
+                      >
+                        <Icon name="close" size={16} color={theme.textMuted} />
+                      </Pressable>
+                    </View>
                   </View>
                 </View>
 
