@@ -1,12 +1,15 @@
 const GATEWAY_URL_KEY = 'nutai.gateway.url'
 const GATEWAY_APP_TOKEN_KEY = 'nutai.gateway.token'
 const GATEWAY_ADMIN_TOKEN_KEY = 'nutai.gateway.admin_token'
+const PROVIDER_MODE_KEY = 'nutai.provider.mode'
+
+export type ProviderMode = 'gateway' | 'google' | 'none'
 
 export const DEFAULT_GATEWAY_URL =
-  process.env['EXPO_PUBLIC_GATEWAY_URL'] || 'https://nut-ai-gateway.onrender.com'
+  process.env['EXPO_PUBLIC_GATEWAY_URL'] || ''
 
 export const DEFAULT_APP_TOKEN =
-  process.env['EXPO_PUBLIC_APP_TOKEN'] || 'nutai-app-default-token'
+  process.env['EXPO_PUBLIC_APP_TOKEN'] || ''
 
 const memoryStore = new Map<string, string>()
 
@@ -76,6 +79,18 @@ export async function setAdminToken(token: string | null): Promise<void> {
   }
 }
 
+export async function getProviderMode(): Promise<ProviderMode> {
+  const saved = await getSecureItem(PROVIDER_MODE_KEY)
+  if (saved === 'google' || saved === 'none' || saved === 'gateway') {
+    return saved
+  }
+  return 'gateway'
+}
+
+export async function setProviderMode(mode: ProviderMode): Promise<void> {
+  await setSecureItem(PROVIDER_MODE_KEY, mode)
+}
+
 export interface GatewayHealthStatus {
   ok: boolean
   status: 'online' | 'degraded' | 'offline'
@@ -90,7 +105,15 @@ export async function checkGatewayHealth(
   gatewayUrl?: string,
   fetchImpl: typeof fetch = fetch,
 ): Promise<GatewayHealthStatus> {
-  const url = (gatewayUrl || (await getGatewayUrl())).replace(/\/+$/, '')
+  const raw = gatewayUrl !== undefined ? gatewayUrl : (await getGatewayUrl())
+  const url = (raw || '').replace(/\/+$/, '').trim()
+  if (!url) {
+    return {
+      ok: false,
+      status: 'offline',
+      error: 'No AI Gateway configured. Enter your Gateway URL/IP in settings.',
+    }
+  }
   const started = Date.now()
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 6000)

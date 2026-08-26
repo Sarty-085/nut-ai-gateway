@@ -1,7 +1,12 @@
-import { describe, expect, it, vi } from 'vitest'
-import { validateCredential, validateGateway } from './validate'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { validateCredential, validateGateway, validateGoogleApiKey } from './validate'
+import { setGatewayUrl } from '../gateway-config'
 
-describe('validateGateway', () => {
+describe('validateGateway & validateGoogleApiKey', () => {
+  beforeEach(async () => {
+    await setGatewayUrl('http://localhost:3000')
+  })
+
   it('returns ok: true when gateway health check succeeds', async () => {
     const fetchImpl = vi.fn().mockResolvedValue({
       ok: true,
@@ -31,7 +36,20 @@ describe('validateGateway', () => {
       json: async () => ({ ok: true, status: 'online', activeResources: 2 }),
     } as Response)
 
-    const res = await validateCredential('google', 'gemini-flash', { kind: 'api_key', value: 'dummy' }, fetchImpl as unknown as typeof fetch)
+    const res = await validateCredential('gateway', 'gemini-flash', { kind: 'api_key', value: 'dummy' }, fetchImpl as unknown as typeof fetch)
     expect(res.ok).toBe(true)
+  })
+
+  it('validateGoogleApiKey validates direct Google Gemini API key', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ candidates: [{ content: { parts: [{ text: 'pong' }] } }] }),
+    } as Response)
+
+    const res = await validateGoogleApiKey('AIzaSyValidGoogleKeyForTesting12345', fetchImpl as unknown as typeof fetch)
+    expect(res.ok).toBe(true)
+    if (res.ok) {
+      expect(res.modelId).toBe('gemini-2.5-flash')
+    }
   })
 })

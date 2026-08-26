@@ -1,4 +1,3 @@
-import * as SecureStore from 'expo-secure-store'
 import type { ProviderId } from '@nutai/prompt'
 
 /**
@@ -29,6 +28,38 @@ export interface StoredCredential {
   value: string
 }
 
+const memoryStore = new Map<string, string>()
+
+async function getSecureItem(key: string): Promise<string | null> {
+  try {
+    const mod = await import('expo-secure-store')
+    const val = await mod.getItemAsync(key)
+    return val
+  } catch {
+    return memoryStore.get(key) ?? null
+  }
+}
+
+async function setSecureItem(key: string, value: string): Promise<void> {
+  try {
+    const mod = await import('expo-secure-store')
+    await mod.setItemAsync(key, value, {
+      keychainAccessible: mod.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+    })
+  } catch {
+    memoryStore.set(key, value)
+  }
+}
+
+async function deleteSecureItem(key: string): Promise<void> {
+  try {
+    const mod = await import('expo-secure-store')
+    await mod.deleteItemAsync(key)
+  } catch {
+    memoryStore.delete(key)
+  }
+}
+
 const keyFor = (p: ProviderId) => `key.${p}`
 const kindFor = (p: ProviderId) => `kind.${p}`
 
@@ -36,22 +67,20 @@ export async function saveCredential(
   provider: ProviderId,
   cred: StoredCredential,
 ): Promise<void> {
-  await SecureStore.setItemAsync(keyFor(provider), cred.value, {
-    keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
-  })
-  await SecureStore.setItemAsync(kindFor(provider), cred.kind)
+  await setSecureItem(keyFor(provider), cred.value)
+  await setSecureItem(kindFor(provider), cred.kind)
 }
 
 export async function loadCredential(provider: ProviderId): Promise<StoredCredential | null> {
-  const value = await SecureStore.getItemAsync(keyFor(provider))
+  const value = await getSecureItem(keyFor(provider))
   if (!value) return null
-  const kind = (await SecureStore.getItemAsync(kindFor(provider))) as CredentialKind | null
+  const kind = (await getSecureItem(kindFor(provider))) as CredentialKind | null
   return { kind: kind ?? 'api_key', value }
 }
 
 export async function clearCredential(provider: ProviderId): Promise<void> {
-  await SecureStore.deleteItemAsync(keyFor(provider))
-  await SecureStore.deleteItemAsync(kindFor(provider))
+  await deleteSecureItem(keyFor(provider))
+  await deleteSecureItem(kindFor(provider))
 }
 
 /** `sk-ant-…a8f2` — never the whole thing, not even to its owner by default. */

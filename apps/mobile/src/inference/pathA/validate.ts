@@ -2,10 +2,7 @@ import { checkGatewayHealth, type GatewayHealthStatus } from '../gateway-config'
 import type { Credential, ScanFailure } from './client'
 
 /**
- * Gateway Connectivity & Access Validation.
- *
- * In the private AI gateway architecture, the mobile client tests connectivity
- * to the private gateway rather than probing vendor APIs directly.
+ * Gateway & Provider Access Validation.
  */
 
 export interface ValidationOk {
@@ -47,15 +44,71 @@ export async function validateGateway(
   }
 }
 
+export async function validateGoogleApiKey(
+  apiKey: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<ValidationResult> {
+  if (!apiKey || apiKey.trim().length < 15) {
+    return {
+      ok: false,
+      error: { kind: 'key-invalid', message: 'API key is too short or empty.', retryable: false },
+      detail: 'Invalid API key format',
+    }
+  }
+
+  const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 10000)
+
+  try {
+    const res = await fetchImpl(url, {
+      method: 'POST',
+      headers: { 'x-goog-api-key': apiKey.trim(), 'content-type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: 'ping' }] }],
+        generationConfig: { maxOutputTokens: 5 },
+      }),
+      signal: controller.signal,
+    })
+
+    if (!res.ok) {
+      const text = await res.text()
+      return {
+        ok: false,
+        error: {
+          kind: 'key-invalid',
+          message: `Google API rejected key (HTTP ${res.status})`,
+          retryable: false,
+          httpStatus: res.status,
+        },
+        detail: text.slice(0, 150),
+      }
+    }
+
+    return { ok: true, usedShape: 'bearer', modelId: 'gemini-2.5-flash' }
+  } catch (err: any) {
+    return {
+      ok: false,
+      error: { kind: 'offline', message: 'Could not connect to Google Gemini API.', retryable: true },
+      detail: String(err.message ?? err),
+    }
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 /**
  * Backwards compatibility helper for existing callers.
  */
 export async function validateCredential(
-  _provider: string,
+  provider: string,
   _model: string,
-  _credential: Credential,
+  credential: Credential,
   fetchImpl: typeof fetch = fetch,
   _timeoutMs = 15_000,
 ): Promise<ValidationResult> {
+  if (provider === 'google' && credential.value && credential.value !== 'dummy') {
+    return validateGoogleApiKey(credential.value, fetchImpl)
+  }
   return validateGateway(undefined, fetchImpl)
 }

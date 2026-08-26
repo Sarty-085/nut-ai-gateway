@@ -6,7 +6,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { availability, requestPermissions } from '../../src/health/healthkit'
 import { exportAndShareBackup, finishRestore, importBackup, pickBackupFile } from '../../src/data/backup'
 import { currentGoal, resetEverything, setting, type CurrentGoal } from '../../src/data/repo'
-import { checkGatewayHealth } from '../../src/inference/gateway-config'
+import { checkGatewayHealth, getGatewayUrl } from '../../src/inference/gateway-config'
+import { loadCredential } from '../../src/inference/credentials'
 import { Icon } from '../../src/components/Icon'
 import { useTheme } from '../../src/theme/ThemeProvider'
 import { radius, space, type } from '../../src/theme/tokens'
@@ -40,11 +41,13 @@ export default function Profile() {
     useCallback(() => {
       let alive = true
       void (async () => {
-        const [g, avail, d, p] = await Promise.all([
+        const [g, avail, d, p, googleCred, gUrl] = await Promise.all([
           currentGoal(),
           availability(),
           setting('diet.style', 'balanced'),
-          setting('provider'),
+          setting('provider', 'gateway'),
+          loadCredential('google'),
+          getGatewayUrl(),
         ])
         if (!alive) return
         setGoal(g)
@@ -52,10 +55,16 @@ export default function Profile() {
         setHealthAvail(avail === 'available' ? 'available' : avail === 'not-ios' ? 'not-ios' : 'unavailable')
         if (p === 'none') {
           setProviderLabel('Offline / Manual only')
+        } else if (p === 'google') {
+          setProviderLabel(googleCred?.value ? 'Google Gemini · Active' : 'Google Gemini · Key required')
         } else {
-          const h = await checkGatewayHealth()
-          if (!alive) return
-          setProviderLabel(h.ok ? 'Private Gateway · Online' : 'Private Gateway · Connecting…')
+          if (!gUrl) {
+            setProviderLabel('Gateway · Not configured')
+          } else {
+            const h = await checkGatewayHealth(gUrl)
+            if (!alive) return
+            setProviderLabel(h.ok ? 'Private Gateway · Online' : 'Private Gateway · Offline')
+          }
         }
       })()
       return () => {

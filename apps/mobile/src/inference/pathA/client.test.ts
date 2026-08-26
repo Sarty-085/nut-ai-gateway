@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   AIService,
   runExerciseEstimate,
@@ -8,6 +8,8 @@ import {
   runScanWithFallback,
   runWebLookup,
 } from './client'
+import { setAppToken, setGatewayUrl, setProviderMode } from '../gateway-config'
+import { clearCredential, saveCredential } from '../credentials'
 
 type Call = { url: string; body: any; headers: Record<string, string> }
 
@@ -30,6 +32,13 @@ function scripted(responses: Array<{ status: number; body: string }>) {
 }
 
 describe('AIService / Gateway Client', () => {
+  beforeEach(async () => {
+    await setGatewayUrl('http://localhost:3000')
+    await setAppToken('test-token')
+    await setProviderMode('gateway')
+    await clearCredential('google')
+  })
+
   it('analyzeFood: posts to /v1/analyze with bearer auth and extracts normalized result', async () => {
     const { calls, impl } = scripted([
       {
@@ -169,6 +178,13 @@ describe('AIService / Gateway Client', () => {
 })
 
 describe('runScan & compatibility wrappers', () => {
+  beforeEach(async () => {
+    await setGatewayUrl('http://localhost:3000')
+    await setAppToken('test-token')
+    await setProviderMode('gateway')
+    await clearCredential('google')
+  })
+
   it('runScan delegates to AIService.analyzeFood', async () => {
     const { impl } = scripted([
       {
@@ -217,5 +233,93 @@ describe('runScan & compatibility wrappers', () => {
 
     const e = await runExerciseEstimate('google', { description: 'run', weightKg: 70 }, null, impl)
     expect(e.ok).toBe(true)
+  })
+
+  it('analyzeFood: executes directly against Google Gemini when provider is google', async () => {
+    await setProviderMode('google')
+    await saveCredential('google', { kind: 'api_key', value: 'AIzaSyFakeGoogleKeyForTest12345' })
+
+    const { calls, impl } = scripted([
+      {
+        status: 200,
+        body: JSON.stringify({
+          candidates: [
+            {
+              content: {
+                parts: [
+                  {
+                    text: JSON.stringify({
+                      schema_version: '1.0.0',
+                      is_food: true,
+                      refusal_reason: null,
+                      items: [
+                        {
+                          name: 'Apple',
+                          brand: null,
+                          canonical_food_key: 'apple, raw',
+                          food_form: 'discrete',
+                          qualitative_size: 'medium',
+                          weight_basis: 'as_served',
+                          model_gram_estimate: 150,
+                          identification_confidence: 0.95,
+                          portion_confidence: 0.9,
+                          uncertainty_reason: 'none',
+                          visible_reference_objects: [],
+                          container: null,
+                          cooking_method_cues: ['raw'],
+                          is_beverage: false,
+                          beverage_category: null,
+                          legible_label_text: null,
+                          stated_assumptions: [],
+                          clarifying_questions: [],
+                          fallback_macros_at_estimate: {
+                            calories_kcal: 78,
+                            protein_g: 0.5,
+                            carbs_g: 21,
+                            fat_g: 0.3,
+                            fiber_g: null,
+                            sodium_mg: null,
+                          },
+                        },
+                      ],
+                      meal_overall: {
+                        identification_confidence: 0.95,
+                        portion_confidence: 0.9,
+                        assumptions: [],
+                        clarifying_questions: [],
+                      },
+                    }),
+                  },
+                ],
+              },
+            },
+          ],
+          usageMetadata: { promptTokenCount: 300, candidatesTokenCount: 80 },
+        }),
+      },
+    ])
+
+    const r = await AIService.analyzeFood(['mock-base64'], 'context', {}, impl)
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.value.provider).toBe('google')
+      expect(r.value.model).toBe('gemini-2.5-flash')
+      expect((r.value.raw as any).is_food).toBe(true)
+    }
+    expect(calls[0]!.url).toContain('generativelanguage.googleapis.com')
+    expect(calls[0]!.headers['x-goog-api-key']).toBe('AIzaSyFakeGoogleKeyForTest12345')
+  })
+
+  it('analyzeFood: returns no-key error when no gateway URL and no Google key is set', async () => {
+    await setGatewayUrl('')
+    await setProviderMode('gateway')
+    await clearCredential('google')
+    const { impl } = scripted([])
+
+    const r = await AIService.analyzeFood(['mock-base64'], 'context', {}, impl)
+    expect(r.ok).toBe(false)
+    if (!r.ok) {
+      expect(r.error.kind).toBe('no-key')
+    }
   })
 })
