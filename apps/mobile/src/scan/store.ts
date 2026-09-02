@@ -105,7 +105,33 @@ export function editGrams(rowId: string, grams: number) {
   if (!Number.isFinite(grams) || grams < 0) return
   mutateMeal((meal) => ({
     ...meal,
-    ingredients: meal.ingredients.map((r) => (r.id === rowId ? { ...r, grams } : r)),
+    ingredients: meal.ingredients.map((r) => (r.id === rowId ? { ...r, grams: Math.round(grams) } : r)),
+  }))
+}
+
+export function adjustGrams(rowId: string, deltaGrams: number) {
+  mutateMeal((meal) => ({
+    ...meal,
+    ingredients: meal.ingredients.map((r) =>
+      r.id === rowId ? { ...r, grams: Math.max(5, Math.round(r.grams + deltaGrams)) } : r,
+    ),
+  }))
+}
+
+export function scaleIngredientGrams(rowId: string, multiplier: number) {
+  if (!Number.isFinite(multiplier) || multiplier <= 0) return
+  mutateMeal((meal) => ({
+    ...meal,
+    ingredients: meal.ingredients.map((r) =>
+      r.id === rowId ? { ...r, grams: Math.max(5, Math.round(r.grams * multiplier)) } : r,
+    ),
+  }))
+}
+
+export function updateRow(rowId: string, updater: (row: IngredientRow) => IngredientRow) {
+  mutateMeal((meal) => ({
+    ...meal,
+    ingredients: meal.ingredients.map((r) => (r.id === rowId ? updater(r) : r)),
   }))
 }
 
@@ -124,8 +150,47 @@ export function addRow(row: IngredientRow) {
 }
 
 export function setPortionEaten(fraction: number) {
-  mutateMeal((meal) => ({ ...meal, portionEatenFraction: Math.max(0, Math.min(1, fraction)) }))
+  if (!Number.isFinite(fraction) || fraction < 0) return
+  mutateMeal((meal) => ({ ...meal, portionEatenFraction: Math.max(0, Math.min(3, fraction)) }))
 }
+
+export function createManualIngredientRow(opts: {
+  displayName: string
+  grams: number
+  kcal: number
+  protein_g: number
+  fat_g: number
+  carbs_g: number
+  fiber_g?: number | null
+  sugar_g?: number | null
+  sodium_mg?: number | null
+  sourceFoodId?: string | null
+}): IngredientRow {
+  const per100 = opts.grams > 0 ? 100 / opts.grams : 0
+  return {
+    id: `item_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    displayName: opts.displayName,
+    grams: opts.grams,
+    gramPathway: 'user_edited',
+    origin: opts.sourceFoodId ? 'db_search' : 'manual_custom',
+    sourceFoodId: opts.sourceFoodId ?? null,
+    sourceUrl: null,
+    isEstimate: !opts.sourceFoodId,
+    macrosUserEdited: true,
+    bandHalfPct: opts.sourceFoodId ? 0.08 : 0.15,
+    nutrientSnapshot: {
+      kcal: opts.kcal * per100,
+      protein_g: opts.protein_g * per100,
+      fat_g: opts.fat_g * per100,
+      carbs_g: opts.carbs_g * per100,
+      fiber_g: opts.fiber_g != null ? opts.fiber_g * per100 : null,
+      sugar_g: opts.sugar_g != null ? opts.sugar_g * per100 : null,
+      sodium_mg: opts.sodium_mg != null ? opts.sodium_mg * per100 : null,
+    },
+    assumptions: [],
+  }
+}
+
 
 /**
  * Answering a clarifying chip IS an add/remove/edit operation.

@@ -249,26 +249,37 @@ async function refineMisses(
  */
 export async function fixScan(note: string): Promise<void> {
   const phase = getPhase()
-  if (phase.kind !== 'ready' || !lastCapture) return
+  if (phase.kind !== 'ready') return
+
+  let base64 = lastCapture?.base64
+  const photoUri = phase.photoUri ?? lastCapture?.photoUri
+
+  if (!base64 && photoUri) {
+    try {
+      base64 = await preprocess(photoUri)
+      lastCapture = { photoUri, base64 }
+    } catch {
+      // ignore
+    }
+  }
+
+  if (!base64 || !photoUri) return
 
   const rows = phase.result.meal.ingredients
     .map((r) => `- ${r.displayName}: ${Math.round(r.grams)} g`)
     .join('\n')
   const fixBlock = [
-    'FIX REQUEST — the user reviewed your previous analysis of this exact photo and asked for a correction.',
-    'The currently accepted analysis:',
-    rows,
-    `The user's correction: "${note.trim()}"`,
-    'Re-emit the FULL JSON payload with ONLY the changes the correction requires.',
-    'Every item and gram figure the correction does not implicate must return IDENTICAL to the accepted analysis above — do not re-estimate what the user did not question.',
-  ].join('\n')
+    'FIX / RE-IDENTIFICATION REQUEST — the user reviewed your previous analysis of this food photo and submitted the following correction / detail:',
+    `USER CORRECTION: "${note.trim()}"`,
+    rows ? `Previous analysis was:\n${rows}` : '',
+    'Re-emit the FULL JSON payload (VisionPayload) correctly reflecting the user\'s correction, accurate food identities, cooking methods, and realistic gram portions.',
+  ].filter(Boolean).join('\n')
 
   const keepFraction = phase.result.meal.portionEatenFraction
   const priorMeta = phase.meta
-  const photoUri = phase.photoUri ?? lastCapture.photoUri
 
   setPhase({ kind: 'analyzing', photoUri, stage: 'identifying' })
-  await analyze(photoUri, lastCapture.base64, { fixBlock, priorMeta, keepFraction })
+  await analyze(photoUri, base64, { fixBlock, priorMeta, keepFraction })
 }
 
 // ---------------------------------------------------------------------------

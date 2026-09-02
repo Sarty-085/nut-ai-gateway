@@ -4,14 +4,18 @@ import type { IngredientRow, LoggedMeal } from '@nutai/core-schema'
 import { recomputeAfterEdit } from '@nutai/pipeline'
 import type { ScanResult } from '@nutai/pipeline'
 import {
+  adjustGrams,
   applyWebOption,
+  createManualIngredientRow,
   editGrams,
   getPhase,
   removeRow,
   reset,
+  scaleIngredientGrams,
   setPhase,
   setPortionEaten,
   setWebLookup,
+  updateRow,
 } from './store'
 
 /**
@@ -104,7 +108,7 @@ describe('removeRow', () => {
 })
 
 describe('setPortionEaten', () => {
-  it('applies as a final multiplier and clamps to [0,1]', () => {
+  it('applies as a final multiplier and clamps to [0,3]', () => {
     readyWith([row()])
     const full = readyPhase().result.totals.kcal
     setPortionEaten(0.5)
@@ -113,7 +117,40 @@ describe('setPortionEaten', () => {
     expect(half).toBeLessThan(full * 0.6)
 
     setPortionEaten(7)
-    expect(readyPhase().result.meal.portionEatenFraction).toBe(1)
+    expect(readyPhase().result.meal.portionEatenFraction).toBe(3)
+  })
+})
+
+describe('ingredient adjustment helpers', () => {
+  it('adjusts grams up and down with minimum limit', () => {
+    readyWith([row({ id: 'r1', grams: 100 })])
+    adjustGrams('r1', 25)
+    expect(readyPhase().result.meal.ingredients[0]!.grams).toBe(125)
+    adjustGrams('r1', -200)
+    expect(readyPhase().result.meal.ingredients[0]!.grams).toBe(5)
+  })
+
+  it('scales ingredient grams with multipliers', () => {
+    readyWith([row({ id: 'r1', grams: 100 })])
+    scaleIngredientGrams('r1', 2.0)
+    expect(readyPhase().result.meal.ingredients[0]!.grams).toBe(200)
+    scaleIngredientGrams('r1', 0.5)
+    expect(readyPhase().result.meal.ingredients[0]!.grams).toBe(100)
+  })
+
+  it('creates manual ingredient row with calculated per-100g snapshot', () => {
+    const manual = createManualIngredientRow({
+      displayName: 'Paneer Bhurji',
+      grams: 200,
+      kcal: 400,
+      protein_g: 24,
+      fat_g: 28,
+      carbs_g: 10,
+    })
+    expect(manual.displayName).toBe('Paneer Bhurji')
+    expect(manual.grams).toBe(200)
+    expect(manual.nutrientSnapshot.kcal).toBe(200) // per 100g
+    expect(manual.nutrientSnapshot.protein_g).toBe(12)
   })
 })
 
