@@ -303,7 +303,7 @@ describe('runScan & compatibility wrappers', () => {
     expect(r.ok).toBe(true)
     if (r.ok) {
       expect(r.value.provider).toBe('google')
-      expect(r.value.model).toBe('gemini-2.5-flash')
+      expect(r.value.model).toBe('gemini-2.0-flash')
       expect((r.value.raw as any).is_food).toBe(true)
     }
     expect(calls[0]!.url).toContain('generativelanguage.googleapis.com')

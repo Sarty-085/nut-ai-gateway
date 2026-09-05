@@ -48,8 +48,10 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModel[]> = {
     { id: 'gpt-4o', label: 'GPT-4o', inputPerMTok: 2.5, outputPerMTok: 10, approxScanCostUsd: 0.012 },
   ],
   google: [
+    { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash', inputPerMTok: 0.10, outputPerMTok: 0.4, approxScanCostUsd: 0.003 },
+    { id: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash', inputPerMTok: 0.075, outputPerMTok: 0.3, approxScanCostUsd: 0.0024 },
+    { id: 'gemini-flash-latest', label: 'Gemini Flash', inputPerMTok: 0.10, outputPerMTok: 0.4, approxScanCostUsd: 0.003 },
     { id: 'gemini-flash-lite-latest', label: 'Gemini Flash-Lite', inputPerMTok: 0.075, outputPerMTok: 0.3, approxScanCostUsd: 0.0024 },
-    { id: 'gemini-flash-latest', label: 'Gemini Flash', inputPerMTok: 0.15, outputPerMTok: 0.6, approxScanCostUsd: 0.005 },
   ],
   anthropic: [
     { id: 'claude-3-5-haiku-20241022', label: 'Claude 3.5 Haiku', inputPerMTok: 1, outputPerMTok: 5, approxScanCostUsd: 0.005 },

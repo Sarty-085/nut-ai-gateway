@@ -70,6 +70,7 @@ export type IconName =
   | 'dot1'
   | 'dot3'
   | 'dot6'
+  | 'photo'
 
 export interface IconProps {
   name: IconName
@@ -465,6 +466,14 @@ function render(name: IconName, c: string, s: Common) {
           <Circle cx="15.5" cy="12" r="1.8" />
           <Circle cx="8.5" cy="17.5" r="1.8" />
           <Circle cx="15.5" cy="17.5" r="1.8" />
+        </G>
+      )
+    case 'photo':
+      return (
+        <G>
+          <Rect {...s} x="3.5" y="4.5" width="17" height="15" rx="3" />
+          <Circle {...s} cx="8.5" cy="9.5" r="1.5" />
+          <Path {...s} d="m4.5 17 6-6 4 4 2.5-2.5 3.5 3.5" />
         </G>
       )
   }

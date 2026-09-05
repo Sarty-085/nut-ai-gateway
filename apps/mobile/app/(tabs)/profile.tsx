@@ -187,8 +187,8 @@ export default function Profile() {
         />
       </Section>
 
-      <Section title="AI Perception">
-        <Row label="Private AI Gateway" value={providerLabel} onPress={() => router.push('/provider-settings' as never)} />
+      <Section title="AI Perception & API Key">
+        <Row label="Provider & Connection" value={providerLabel} onPress={() => router.push('/provider-settings' as never)} />
       </Section>
 
       <Section title="Apple Health">

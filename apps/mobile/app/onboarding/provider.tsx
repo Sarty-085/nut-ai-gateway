@@ -19,6 +19,7 @@ import {
   getGatewayUrl,
   setAppToken,
   setGatewayUrl,
+  setProviderMode,
 } from '../../src/inference/gateway-config'
 import { loadCredential, saveCredential } from '../../src/inference/credentials'
 import { validateGoogleApiKey } from '../../src/inference/pathA/validate'
@@ -105,15 +106,18 @@ export default function ProviderScreen() {
     if (choice === 'gateway') {
       await setGatewayUrl(gatewayUrlInput.trim())
       await setAppToken(gatewayTokenInput.trim())
+      await setProviderMode('gateway')
       await putSetting('provider', 'gateway')
       setAnswer('provider', 'gateway' as any)
     } else if (choice === 'google') {
       if (googleKeyInput.trim()) {
         await saveCredential('google', { kind: 'api_key', value: googleKeyInput.trim() })
       }
+      await setProviderMode('google')
       await putSetting('provider', 'google')
       setAnswer('provider', 'google' as any)
     } else {
+      await setProviderMode('none')
       await putSetting('provider', 'none')
       setAnswer('provider', 'none' as any)
     }

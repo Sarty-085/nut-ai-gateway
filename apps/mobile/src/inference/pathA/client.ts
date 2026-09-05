@@ -220,14 +220,14 @@ async function callGoogleGeminiDirect<T = any>(
     const inputTokens = json.usageMetadata?.promptTokenCount ?? 0
     const outputTokens = json.usageMetadata?.candidatesTokenCount ?? 0
     const latencyMs = Date.now() - started
-    const costUsd = computeScanCost('google', 'gemini-2.5-flash', inputTokens, outputTokens)
+    const costUsd = computeScanCost('google', 'gemini-2.0-flash', inputTokens, outputTokens)
 
     return {
       ok: true,
       data: validated.data,
       meta: {
         provider: 'google',
-        model: 'gemini-2.5-flash',
+        model: 'gemini-2.0-flash',
         inputTokens,
         outputTokens,
         costUsd,
@@ -356,7 +356,7 @@ export const AIService = {
       }
       const built = buildGeminiRequest(
         {
-          model: 'gemini-2.5-flash',
+          model: 'gemini-2.0-flash',
           imagesBase64,
           localSignalsBlock: opts?.fixBlock || localSignalsBlock,
           jsonSchema: geminiWireSchema(VISION_WIRE_SCHEMA),
@@ -377,7 +377,7 @@ export const AIService = {
           latencyMs: res.meta?.latencyMs ?? 0,
           promptVersion: PROMPT_VERSION,
           provider: 'google',
-          model: 'gemini-2.5-flash',
+          model: 'gemini-2.0-flash',
         },
       }
     }
@@ -428,7 +428,7 @@ export const AIService = {
     if (useGoogle && googleCred?.value) {
       const built = buildLabelScanRequest(
         'google',
-        { model: 'gemini-2.5-flash', imageBase64 },
+        { model: 'gemini-2.0-flash', imageBase64 },
         { kind: 'api_key', value: googleCred.value },
       )
       const res = await callGoogleGeminiDirect(built.url, built.headers, built.body, opts?.timeoutMs ?? 30_000, LabelPayloadZ, fetchImpl)
@@ -462,7 +462,7 @@ export const AIService = {
     if (useGoogle && googleCred?.value) {
       const built = buildReceiptScanRequest(
         'google',
-        { model: 'gemini-2.5-flash', imageBase64 },
+        { model: 'gemini-2.0-flash', imageBase64 },
         { kind: 'api_key', value: googleCred.value },
       )
       const res = await callGoogleGeminiDirect(built.url, built.headers, built.body, opts?.timeoutMs ?? 30_000, ReceiptPayloadZ, fetchImpl)
@@ -498,7 +498,7 @@ export const AIService = {
     if (useGoogle && googleCred?.value) {
       const built = buildWebLookupRequest(
         'google',
-        { model: 'gemini-2.5-flash', itemName, brand: brand ?? null, visualContext: visualContext ?? null },
+        { model: 'gemini-2.0-flash', itemName, brand: brand ?? null, visualContext: visualContext ?? null },
         { kind: 'api_key', value: googleCred.value },
       )
       const res = await callGoogleGeminiDirect(built.url, built.headers, built.body, opts?.timeoutMs ?? 30_000, WebLookupResultZ, fetchImpl)
@@ -534,7 +534,7 @@ export const AIService = {
       const built = buildTextJsonRequest(
         'google',
         {
-          model: 'gemini-2.5-flash',
+          model: 'gemini-2.0-flash',
           instruction: buildExerciseEstimateInstruction(description, weightKg ?? null),
         },
         { kind: 'api_key', value: googleCred.value },
@@ -572,7 +572,7 @@ export const AIService = {
     if (useGoogle && googleCred?.value) {
       const built = buildBodyScanRequest(
         'google',
-        { model: 'gemini-2.5-flash', imageBase64, localSignalsBlock },
+        { model: 'gemini-2.0-flash', imageBase64, localSignalsBlock },
         { kind: 'api_key', value: googleCred.value },
       )
       const res = await callGoogleGeminiDirect(built.url, built.headers, built.body, opts?.timeoutMs ?? 45_000, BodyScanPayloadZ, fetchImpl)

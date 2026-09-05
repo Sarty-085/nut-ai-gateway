@@ -1,8 +1,11 @@
 import { Tabs, router } from 'expo-router'
 import { useState } from 'react'
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native'
+import { Alert, Modal, Pressable, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import * as ImagePicker from 'expo-image-picker'
 import { Icon, type IconName } from '../../src/components/Icon'
+import { setPhase } from '../../src/scan/store'
+import { startScan } from '../../src/scan/orchestrator'
 import { useTheme } from '../../src/theme/ThemeProvider'
 import { MIN_TAP_TARGET, radius, space, type } from '../../src/theme/tokens'
 
@@ -34,8 +37,9 @@ interface Action {
 }
 
 const ACTIONS: Action[] = [
-  { label: 'Scan Body & Posture', subtitle: 'Biomechanical alignment & corrective drills', icon: 'muscle', route: '/body-scan' },
   { label: 'Scan Food', subtitle: 'Instant AI meal photo analysis', icon: 'scan', route: '/camera' },
+  { label: 'Upload Meal Photo', subtitle: 'Select food photo from gallery', icon: 'photo', route: 'gallery' },
+  { label: 'Scan Body & Posture', subtitle: 'Biomechanical alignment & corrective drills', icon: 'muscle', route: '/body-scan' },
   { label: 'Food Database', subtitle: 'Search USDA & Indian nutrition database', icon: 'search', route: '/food-search' },
   { label: 'Saved Meals', subtitle: 'Instant 1-tap logging for favorite foods', icon: 'bowl', route: '/saved-foods' },
   { label: 'Log Weight', subtitle: 'Record weight & recalibrate targets', icon: 'scale', route: '/log-weight' },
@@ -46,6 +50,27 @@ export default function TabLayout() {
   const theme = useTheme()
   const insets = useSafeAreaInsets()
   const [sheetOpen, setSheetOpen] = useState(false)
+
+  async function handleAction(a: Action) {
+    setSheetOpen(false)
+    if (a.route === 'gallery') {
+      try {
+        const res = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ['images'],
+          quality: 1,
+        })
+        if (res.canceled || !res.assets || !res.assets[0]?.uri) return
+        const photoUri = res.assets[0].uri
+        setPhase({ kind: 'captured', photoUri })
+        router.push('/result')
+        void startScan(photoUri)
+      } catch (err: any) {
+        Alert.alert('Gallery Error', err?.message || 'Could not load selected photo')
+      }
+    } else {
+      router.push(a.route as never)
+    }
+  }
 
   return (
     <>
@@ -126,10 +151,7 @@ export default function TabLayout() {
                 <Pressable
                   key={a.label}
                   accessibilityRole="button"
-                  onPress={() => {
-                    setSheetOpen(false)
-                    router.push(a.route as never)
-                  }}
+                  onPress={() => void handleAction(a)}
                   style={[styles.sheetItem, { backgroundColor: theme.isDark ? '#202028' : theme.bgSunken }]}
                 >
                   <View style={[styles.itemIconWrap, { backgroundColor: theme.isDark ? '#16161C' : theme.bgElevated }]}>

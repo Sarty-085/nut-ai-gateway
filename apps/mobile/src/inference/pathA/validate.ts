@@ -56,12 +56,13 @@ export async function validateGoogleApiKey(
     }
   }
 
-  const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'
+  const primaryUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent'
+  const fallbackUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent'
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 10000)
 
   try {
-    const res = await fetchImpl(url, {
+    let res = await fetchImpl(primaryUrl, {
       method: 'POST',
       headers: { 'x-goog-api-key': apiKey.trim(), 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -70,6 +71,22 @@ export async function validateGoogleApiKey(
       }),
       signal: controller.signal,
     })
+
+    let modelId = 'gemini-2.0-flash'
+
+    if (!res.ok && res.status === 404) {
+      // Fallback to 1.5-flash if 2.0-flash is not available on this endpoint
+      res = await fetchImpl(fallbackUrl, {
+        method: 'POST',
+        headers: { 'x-goog-api-key': apiKey.trim(), 'content-type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: 'ping' }] }],
+          generationConfig: { maxOutputTokens: 5 },
+        }),
+        signal: controller.signal,
+      })
+      modelId = 'gemini-1.5-flash'
+    }
 
     if (!res.ok) {
       const text = await res.text()
@@ -85,7 +102,7 @@ export async function validateGoogleApiKey(
       }
     }
 
-    return { ok: true, usedShape: 'bearer', modelId: 'gemini-2.5-flash' }
+    return { ok: true, usedShape: 'bearer', modelId }
   } catch (err: any) {
     return {
       ok: false,

@@ -1,7 +1,8 @@
 import { CameraView, useCameraPermissions } from 'expo-camera'
+import * as ImagePicker from 'expo-image-picker'
 import { router } from 'expo-router'
 import { useRef, useState } from 'react'
-import { Pressable, StyleSheet, Text, View } from 'react-native'
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Icon, type IconName } from '../src/components/Icon'
 import { startBarcodeScan, startLabelScan, startReceiptScan, startScan } from '../src/scan/orchestrator'
@@ -90,6 +91,26 @@ export default function Camera() {
     }
   }
 
+  async function pickFromGallery() {
+    if (busy) return
+    try {
+      const res = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        quality: 1,
+      })
+      if (res.canceled || !res.assets || !res.assets[0]?.uri) return
+      const photoUri = res.assets[0].uri
+
+      setPhase({ kind: 'captured', photoUri })
+      router.replace('/result')
+      if (mode === 'label') void startLabelScan(photoUri)
+      else if (mode === 'receipt') void startReceiptScan(photoUri)
+      else void startScan(photoUri)
+    } catch (err: any) {
+      Alert.alert('Gallery Error', err.message || 'Could not load selected photo')
+    }
+  }
+
   function onBarcode(data: string) {
     if (barcodeFired.current || !data) return
     barcodeFired.current = true
@@ -136,13 +157,28 @@ export default function Camera() {
         {mode === 'barcode' ? (
           <Text style={[type.caption, styles.hint]}>Point at the barcode — it scans on its own</Text>
         ) : (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Take photo"
-            onPress={capture}
-            disabled={busy}
-            style={[styles.shutter, busy && { opacity: 0.5 }]}
-          />
+          <View style={styles.shutterRow}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Upload photo from library"
+              onPress={pickFromGallery}
+              disabled={busy}
+              style={styles.galleryButton}
+            >
+              <Icon name="photo" size={24} color="#fff" />
+              <Text style={[type.micro, { color: '#fff', marginTop: 2 }]}>Upload</Text>
+            </Pressable>
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Take photo"
+              onPress={capture}
+              disabled={busy}
+              style={[styles.shutter, busy && { opacity: 0.5 }]}
+            />
+
+            <View style={styles.galleryButtonPlaceholder} />
+          </View>
         )}
       </View>
 
@@ -191,6 +227,27 @@ const styles = StyleSheet.create({
   },
   modePillActive: { backgroundColor: '#fff' },
   hint: { color: 'rgba(255,255,255,0.85)', paddingVertical: space.lg },
+  shutterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    paddingHorizontal: space.xxl,
+  },
+  galleryButton: {
+    width: 60,
+    height: 60,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.25)',
+  },
+  galleryButtonPlaceholder: {
+    width: 60,
+    height: 60,
+  },
   shutter: {
     width: 74,
     height: 74,

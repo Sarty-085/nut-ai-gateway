@@ -84,11 +84,26 @@ export async function getProviderMode(): Promise<ProviderMode> {
   if (saved === 'google' || saved === 'none' || saved === 'gateway') {
     return saved
   }
+  try {
+    const { setting } = await import('../data/repo')
+    const dbVal = await setting('provider', 'gateway')
+    if (dbVal === 'google' || dbVal === 'none' || dbVal === 'gateway') {
+      return dbVal
+    }
+  } catch {
+    // fallback if DB not yet available
+  }
   return 'gateway'
 }
 
 export async function setProviderMode(mode: ProviderMode): Promise<void> {
   await setSecureItem(PROVIDER_MODE_KEY, mode)
+  try {
+    const { putSetting } = await import('../data/repo')
+    await putSetting('provider', mode)
+  } catch {
+    // ignore
+  }
 }
 
 export interface GatewayHealthStatus {

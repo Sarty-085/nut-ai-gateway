@@ -22,6 +22,7 @@ import {
   setAdminToken,
   setAppToken,
   setGatewayUrl,
+  setProviderMode,
   type GatewayHealthStatus,
 } from '../src/inference/gateway-config'
 import { clearCredential, loadCredential, saveCredential } from '../src/inference/credentials'
@@ -92,6 +93,7 @@ export default function ProviderSettings() {
 
   async function handleSelectMode(newMode: ProviderMode) {
     setMode(newMode)
+    await setProviderMode(newMode)
     await putSetting('provider', newMode)
     if (newMode === 'none') {
       Alert.alert('Offline Mode Enabled', 'AI camera scanning is disabled. Manual logging, barcode scanning, and offline databases remain fully available.')
@@ -102,6 +104,7 @@ export default function ProviderSettings() {
     setBusy(true)
     await setGatewayUrl(url.trim())
     await setAppToken(token.trim())
+    await setProviderMode('gateway')
     await putSetting('provider', 'gateway')
     const h = await checkGatewayHealth(url.trim())
     setHealth(h)
@@ -123,6 +126,7 @@ export default function ProviderSettings() {
     setBusy(false)
     if (val.ok) {
       await saveCredential('google', { kind: 'api_key', value: googleKey.trim() })
+      await setProviderMode('google')
       await putSetting('provider', 'google')
       setGoogleStatus('Verified and active')
       Alert.alert('API Key Verified', 'Google Gemini API key verified successfully! WorkFit AI will analyze meal photos and scans directly.')

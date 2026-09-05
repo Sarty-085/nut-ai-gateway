@@ -49,7 +49,7 @@ describe('validateGateway & validateGoogleApiKey', () => {
     const res = await validateGoogleApiKey('AIzaSyValidGoogleKeyForTesting12345', fetchImpl as unknown as typeof fetch)
     expect(res.ok).toBe(true)
     if (res.ok) {
-      expect(res.modelId).toBe('gemini-2.5-flash')
+      expect(res.modelId).toBe('gemini-2.0-flash')
     }
   })
 })
