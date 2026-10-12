@@ -1,0 +1,70 @@
+name: Build & Release WorkFit AI APK
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Install Monorepo Dependencies
+        run: npm ci
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x apps/mobile/android/gradlew
+
+      - name: Build Android Release APK
+        working-directory: apps/mobile/android
+        run: ./gradlew assembleRelease --stacktrace
+
+      - name: Prepare Release Assets
+        run: |
+          mkdir -p release-assets
+          cp apps/mobile/android/app/build/outputs/apk/release/app-release.apk release-assets/workfit-ai-${{ github.ref_name }}.apk
+          cp apps/mobile/android/app/build/outputs/apk/release/app-release.apk release-assets/workfit-ai-latest.apk
+          cd release-assets
+          sha256sum workfit-ai-${{ github.ref_name }}.apk > workfit-ai-${{ github.ref_name }}.apk.sha256
+          sha256sum workfit-ai-latest.apk > workfit-ai-latest.apk.sha256
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          name: "WorkFit AI ${{ github.ref_name }} ⚡"
+          body: |
+            ## WorkFit AI ${{ github.ref_name }} 🚀
+
+            ### Download & Update
+            - Download `workfit-ai-${{ github.ref_name }}.apk` below or update directly within the app under **Profile → App Updates**.
+            
+            ### Zero Data Loss & Privacy
+            - **Seamless Upgrade**: All historical meal logs, custom foods, weight entries, and gateway configurations are preserved in local SQLite.
+            - **Privacy First**: Zero external telemetry, completely local on-device database persistence.
+          files: |
+            release-assets/workfit-ai-${{ github.ref_name }}.apk
+            release-assets/workfit-ai-latest.apk
+            release-assets/*.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

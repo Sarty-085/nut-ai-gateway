@@ -5,6 +5,12 @@ import { useEffect, useState } from 'react'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { ThemeProvider, useTheme } from '../src/theme/ThemeProvider'
+import { UpdateDialog } from '../src/components/UpdateDialog'
+import {
+  checkForAppUpdates,
+  downloadAndInstallUpdate,
+  type UpdateInfo,
+} from '../src/updater/github-updater'
 
 import { ONBOARDING_DONE_KEY } from '../src/onboarding/done-key'
 export { ONBOARDING_DONE_KEY }
@@ -45,6 +51,47 @@ function Root() {
   const theme = useTheme()
   useOnboardingGate()
 
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null)
+  const [modalVisible, setModalVisible] = useState(false)
+  const [isDownloading, setIsDownloading] = useState(false)
+  const [downloadProgress, setDownloadProgress] = useState(0)
+
+  // Check for updates on startup
+  useEffect(() => {
+    let alive = true
+    void (async () => {
+      try {
+        const info = await checkForAppUpdates()
+        if (alive && info && info.isUpdateAvailable) {
+          setUpdateInfo(info)
+          setModalVisible(true)
+        }
+      } catch (err) {
+        console.warn('[Root] Auto-update check error:', err)
+      }
+    })()
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  const handleStartUpdate = async () => {
+    if (!updateInfo) return
+    setIsDownloading(true)
+    setDownloadProgress(0)
+
+    const result = await downloadAndInstallUpdate(
+      updateInfo.downloadUrl,
+      updateInfo.fileName,
+      (progress) => setDownloadProgress(progress),
+    )
+
+    setIsDownloading(false)
+    if (!result.success && result.error) {
+      alert(`Update Error: ${result.error}`)
+    }
+  }
+
   return (
     <>
       <StatusBar style={theme.isDark ? 'light' : 'dark'} />
@@ -62,6 +109,15 @@ function Root() {
         <Stack.Screen name="saved-foods" options={{ presentation: 'modal' }} />
         <Stack.Screen name="edit-goals" options={{ presentation: 'modal' }} />
       </Stack>
+
+      <UpdateDialog
+        visible={modalVisible}
+        updateInfo={updateInfo}
+        isDownloading={isDownloading}
+        downloadProgress={downloadProgress}
+        onDismiss={() => setModalVisible(false)}
+        onUpdate={handleStartUpdate}
+      />
     </>
   )
 }

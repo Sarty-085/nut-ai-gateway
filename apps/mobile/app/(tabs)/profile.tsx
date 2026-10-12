@@ -11,6 +11,13 @@ import { loadCredential } from '../../src/inference/credentials'
 import { Icon } from '../../src/components/Icon'
 import { useTheme } from '../../src/theme/ThemeProvider'
 import { radius, space, type } from '../../src/theme/tokens'
+import {
+  checkForAppUpdates,
+  downloadAndInstallUpdate,
+  CURRENT_APP_VERSION,
+  type UpdateInfo,
+} from '../../src/updater/github-updater'
+import { UpdateDialog } from '../../src/components/UpdateDialog'
 
 /**
  * Profile.
@@ -36,6 +43,55 @@ export default function Profile() {
   const [diet, setDiet] = useState('')
   const [providerLabel, setProviderLabel] = useState('—')
   const [dataBusy, setDataBusy] = useState(false)
+
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null)
+  const [modalVisible, setModalVisible] = useState(false)
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false)
+  const [isDownloading, setIsDownloading] = useState(false)
+  const [downloadProgress, setDownloadProgress] = useState(0)
+
+  async function handleCheckForUpdates() {
+    if (isCheckingUpdate) return
+    setIsCheckingUpdate(true)
+    try {
+      const info = await checkForAppUpdates()
+      if (info) {
+        setUpdateInfo(info)
+        if (info.isUpdateAvailable) {
+          setModalVisible(true)
+        } else {
+          Alert.alert(
+            'Up to Date! ✨',
+            `WorkFit AI is currently on the latest version (${info.currentVersion}). No update needed.`,
+          )
+        }
+      } else {
+        Alert.alert(
+          'Check Failed',
+          'Could not reach GitHub Releases. Please check your internet connection.',
+        )
+      }
+    } finally {
+      setIsCheckingUpdate(false)
+    }
+  }
+
+  async function handleStartUpdate() {
+    if (!updateInfo) return
+    setIsDownloading(true)
+    setDownloadProgress(0)
+
+    const result = await downloadAndInstallUpdate(
+      updateInfo.downloadUrl,
+      updateInfo.fileName,
+      (progress) => setDownloadProgress(progress),
+    )
+
+    setIsDownloading(false)
+    if (!result.success && result.error) {
+      Alert.alert('Update Failed', result.error)
+    }
+  }
 
   useFocusEffect(
     useCallback(() => {
@@ -257,10 +313,31 @@ export default function Profile() {
         />
       </Section>
 
+      <Section title="App Updates">
+        <Row
+          label="Check for updates"
+          value={isCheckingUpdate ? 'Checking…' : `v${CURRENT_APP_VERSION}`}
+          onPress={handleCheckForUpdates}
+        />
+        <Text style={[type.caption, { color: theme.textMuted, padding: space.lg, paddingTop: space.xs, lineHeight: 18 }]}>
+          Fetches latest release APK from GitHub. All your meals, workouts, weights, and settings are preserved.
+        </Text>
+      </Section>
+
       <Section title="About">
+        <Row label="Version" value={`v${CURRENT_APP_VERSION}`} />
         <Row label="License" value="AGPL-3.0" />
         <Row label="Nutrition data" value="USDA, CC0" />
       </Section>
+
+      <UpdateDialog
+        visible={modalVisible}
+        updateInfo={updateInfo}
+        isDownloading={isDownloading}
+        downloadProgress={downloadProgress}
+        onDismiss={() => setModalVisible(false)}
+        onUpdate={handleStartUpdate}
+      />
 
       <Text style={[type.caption, { color: theme.textFaint, marginTop: space.xl, lineHeight: 19 }]}>
         WorkFit AI's estimates are AI-generated approximations and may not be accurate. It is not a

@@ -62,7 +62,7 @@ const config: ExpoConfig = {
   android: {
     package: BUNDLE_ID,
     adaptiveIcon: { foregroundImage: './assets/adaptive-icon.png', backgroundColor: '#0B0B0F' },
-    permissions: ['android.permission.CAMERA'],
+    permissions: ['android.permission.CAMERA', 'android.permission.REQUEST_INSTALL_PACKAGES'],
     // No Google Play Services dependency: all notifications are local, there is
     // no push token and no FCM. Preserving that keeps F-Droid viable, which
     // matters for an AGPL project.
