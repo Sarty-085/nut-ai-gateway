@@ -160,7 +160,8 @@ npm run check
 ## 📦 Production Builds & Releases
 
 Release APKs are available on [GitHub Releases](https://github.com/Sarty-085/nut-ai-gateway/releases):
-- **`v1.4.0` (Latest)**: Working Interactive Portion Scaler (25%, 50%, 75%, 100%, 150%, Custom %), Ingredient Management (Add from 8k+ Database, Manual Entry, Swap Food, Quick +/- Gram Adjusters), and Enhanced AI Meal Correction & Re-Analysis.
+- **`v1.4.1` (Latest)**: In-App GitHub Auto-Updater with Zero Data Loss (Background & Manual checks in Profile), Live Download Progress Bar, Native FileProvider Package Installer, and Automated CI/CD Release Workflow.
+- **`v1.4.0`**: Working Interactive Portion Scaler (25%, 50%, 75%, 100%, 150%, Custom %), Ingredient Management (Add from 8k+ Database, Manual Entry, Swap Food, Quick +/- Gram Adjusters), and Enhanced AI Meal Correction & Re-Analysis.
 - **`v1.3.0`**: Complete Health Suite, Indian Nutrient Databank (INDB/IFCT), Interactive Biomechanical Exercise Visualizer, Dynamic Weight Recalibration, Step Tracking, and Water Logging.
 - **`v1.2.0`**: Body Scan Persistence, Corrective Drill Previews, and Dark OLED Theme.
 - **`v1.1.0`**: AI Body, Posture & Muscle Symmetry Scan with Real-Time Silhouette Alignment Guides.
