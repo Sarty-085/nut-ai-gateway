@@ -26,7 +26,7 @@ export interface UpdateInfo {
   fileName: string
 }
 
-export const CURRENT_APP_VERSION = '1.4.0'
+export const CURRENT_APP_VERSION = '1.4.1'
 export const REPO_OWNER = 'Sarty-085'
 export const REPO_NAME = 'nut-ai-gateway'
 const RELEASES_API_URL = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest`
